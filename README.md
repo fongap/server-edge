@@ -31,7 +31,30 @@ Oracle Cloud、Ubuntu、本地服务器都只是部署目标，不是架构身�
 
 ## M1 Portable Linux Infra
 
-当前 M1 已实现 Host Detect、Host Contract 校验、首个 `apt + systemd` Adapter、Docker Engine + Compose Runtime、Tailscale Overlay、`edge_*` 网络和 Infra 健康检查。
+M1 已完成。
+
+已实现：
+
+- Host Detect；
+- Host Contract 校验；
+- `apt + systemd` 首个 Adapter；
+- Docker Engine + Compose Runtime；
+- Tailscale Overlay；
+- `edge_*` 受管网络；
+- Infra 健康检查；
+- Release Shell 可执行位恢复；
+- 静态 CI 与重复安装验证。
+
+首个 Verified Target：
+
+```text
+Oracle Cloud
+Ubuntu 24.04 Noble
+arm64
+apt-get + systemd
+Docker Engine + Compose v2
+Tailscale connected
+```
 
 GitHub bootstrap 的最小前置是 Linux、root/sudo、`curl` 和 `tar`。Ubuntu/Debian + systemd 可自动补齐运行环境；其他 Linux 如果已具备兼容 Docker Engine + Compose 和基础工具，可按 Compatible 路径继续部署。
 
