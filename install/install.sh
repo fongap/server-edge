@@ -3,7 +3,6 @@ set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$(cd "$HERE/.." && pwd)"
 source "$HERE/lib/common.sh"
-source "$HERE/lib/modules.sh"
 
 root=/opt/server-edge
 profile_rel=profiles/default.json
@@ -15,15 +14,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+mkdir -p "$root/runtime" "$root/releases"
+bash "$RELEASE_DIR/infra/host/bootstrap.sh" --root "$root"
+
+source "$HERE/lib/modules.sh"
 profile="$RELEASE_DIR/$profile_rel"
 [[ -f "$profile" ]] || die "profile not found: $profile_rel"
 profile_enabled "$profile" infra || die "infra must be enabled"
 
 mkdir -p "$root"/{state,secrets,runtime,backups,shared/assets,releases}
 chmod 700 "$root/secrets"
-
-"$HERE/validate.sh"
-"$RELEASE_DIR/infra/network/provision.sh"
+bash "$HERE/validate.sh"
 
 mapfile -t modules < <(jq -r '.modules[].name' "$RELEASE_DIR/manifests/modules.json")
 for module in "${modules[@]}"; do
@@ -32,6 +33,7 @@ for module in "${modules[@]}"; do
   chmod 700 "$root/secrets/$module"
   run_module_hook "$RELEASE_DIR" "$module" validate.sh "$root"
   run_module_hook "$RELEASE_DIR" "$module" install.sh "$root"
+  run_module_hook "$RELEASE_DIR" "$module" healthcheck.sh "$root"
 done
 
 log "module installation completed"
