@@ -64,44 +64,79 @@ SERVER_EDGE_OVERLAY=required
 
 ## M2 Proxy Hub
 
-M2 当前实现固定使用 Mihomo `v1.19.30`，采用单代理核心。
+M2 使用 Mihomo `v1.19.30`，同时提供代理聚合、Token 化订阅 Feed 与可选显式出口。
 
-第一节点始终是：
-
-```text
-LOCAL
-```
-
-`LOCAL` 使用 Mihomo `type: direct`，表示当前 Server Edge 宿主自身的公网出口。部署在当前 Oracle Cloud Compute 时，`LOCAL` 就是 Oracle 节点；代码本身不硬编码 Oracle，因此部署到其他 Linux 主机时仍保持可移植。
-
-基础形态不要求任何外部订阅：
+出口模式持久化在：
 
 ```text
-PROXY
-└── LOCAL
+/opt/server-edge/config/proxy-hub.env
 ```
 
-如果 Tailscale 已连接，宿主 Mixed Port `7890` 与 Controller `9090` 都只绑定 Tailscale IPv4；因此 Tailnet 内其他设备可直接把该宿主作为 HTTP/SOCKS 代理节点使用。没有 Tailnet 时只绑定 `127.0.0.1`。
-
-外部订阅是可选扩展。加入 `proxy-providers` 后：
+支持：
 
 ```text
-PROXY
-├── LOCAL
-├── AUTO
-└── FALLBACK
-    └── external providers
+SERVER_EDGE_PROXY_EGRESS=off
+SERVER_EDGE_PROXY_EGRESS=local
+SERVER_EDGE_PROXY_EGRESS=provider
+SERVER_EDGE_PROXY_EGRESS=hybrid
 ```
 
-M2 不启用 TUN，不劫持宿主流量，也不引入 Sub-Store、第二代理核心或常驻 Dashboard。
+默认 `local`。`LOCAL` 表示当前宿主自身的公网出口；部署在当前 Oracle Compute 时就是 Oracle 节点，但代码不硬编码 Oracle。
 
-可选 Provider Secret 路径：
+端口职责分离：
+
+```text
+7890  统一显式出口，仅 egress != off
+7891  LOCAL 专用 SOCKS5 节点，仅 local/hybrid
+8780  订阅 Feed
+9090  Controller
+```
+
+`7891` 固定直出当前宿主，不受 `PROXY` 选择外部 Provider 的影响。
+
+Provider 仍通过 root-only `*.url` 文件配置：
 
 ```text
 /opt/server-edge/secrets/proxy-hub/providers/*.url
 ```
 
-每个文件只保存一个 HTTPS 订阅地址，Owner 必须为 `root`，权限必须为 `0600` 或 `0400`。真实订阅 URL 和 Controller Secret 都不进入 Git。
+上游真实订阅 URL 不写进客户端 Feed。Mihomo 先缓存 Provider，Feed 再从 Server Edge 自己的地址对外提供。
+
+有 Provider 时同时提供：
+
+```text
+AUTO      自动选优
+FALLBACK  故障切换
+PROXY     统一选择入口
+```
+
+订阅地址格式：
+
+```text
+<BASE>/<TOKEN>/mihomo.yaml
+```
+
+默认 `BASE` 为 Tailnet 地址：
+
+```text
+http://<TAILSCALE_IP>:8780
+```
+
+完整地址只在显式执行以下命令时显示，避免 Token 进入普通日志：
+
+```bash
+sudo /opt/server-edge/current/proxy-hub/scripts/show-endpoints.sh
+```
+
+可选自定义 HTTPS Origin：
+
+```text
+SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=https://sub.example.com
+```
+
+Proxy Hub 自己不发布公网 `80/443`。它通过 `edge_service_proxy_public` 提供内部 Feed，并写出 `/opt/server-edge/runtime/contracts/proxy-subscription.json`；后续由 `public-edge` 消费契约，负责域名、TLS 和反向代理。
+
+M2 不启用 TUN，不劫持宿主流量，也不引入第二代理核心。当前不引入完整 Sub-Store；只有出现多格式转换、可视化订阅管理等明确需求时再评估。
 
 ## 文档
 
