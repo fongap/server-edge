@@ -5,6 +5,10 @@
     "mihomo": {
       "version": "1.19.30",
       "image": "metacubex/mihomo:v1.19.30"
+    },
+    "busybox": {
+      "version": "1.37.0",
+      "image": "busybox:1.37.0"
     }
   }
 }
