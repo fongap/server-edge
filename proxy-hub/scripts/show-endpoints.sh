@@ -12,16 +12,20 @@ env_file="$root/runtime/proxy-hub/compose.env"
 source "$env_file"
 
 printf 'subscription=%s/%s/mihomo.yaml\n' \
-  "$SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL" "$SERVER_EDGE_PROXY_FEED_TOKEN"
-printf 'controller=http://%s:9090\n' "$SERVER_EDGE_PROXY_CONTROLLER_BIND_IP"
+  "$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN" "$SERVER_EDGE_PROXY_FEED_TOKEN"
+printf 'controller=http://%s:%s\n' \
+  "$SERVER_EDGE_PROXY_CONTROLLER_BIND_IP" "$SERVER_EDGE_PROXY_CONTROLLER_PORT"
 
-case "$SERVER_EDGE_PROXY_EGRESS" in
-  local|hybrid)
-    printf 'local-node=socks5://%s:7891\n' "$SERVER_EDGE_PROXY_NODE_HOST"
-    ;;
-esac
-
-if [[ "$SERVER_EDGE_PROXY_EGRESS" != off ]]; then
-  printf 'host-egress=http://127.0.0.1:7890\n'
-  printf 'container-egress=http://proxy-hub:7890\n'
+if [[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true ]]; then
+  printf 'local-node=socks5://%s:%s\n' \
+    "$SERVER_EDGE_PROXY_NODE_HOST" "$SERVER_EDGE_PROXY_LOCAL_NODE_PORT"
 fi
+
+if [[ "$SERVER_EDGE_PROXY_EGRESS_ENABLED" == true ]]; then
+  printf 'host-egress=http://%s:%s\n' \
+    "$SERVER_EDGE_PROXY_EGRESS_BIND_IP" "$SERVER_EDGE_PROXY_EGRESS_PORT"
+  printf 'container-egress=http://proxy-hub:%s\n' "$SERVER_EDGE_PROXY_EGRESS_PORT"
+fi
+
+printf 'aggregation=providers-required\n'
+printf 'egress-policy=%s\n' "$SERVER_EDGE_PROXY_EGRESS_POLICY"
