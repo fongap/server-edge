@@ -35,6 +35,10 @@ release_id="$(printf '%s' "$ref" | tr '/:@ ' '____' | tr -cd '[:alnum:]._+-')-$(
 release_dir="$root/releases/$release_id"
 mv "$source_dir" "$release_dir"
 
+# GitHub archive extraction may not preserve executable bits for scripts created via the Contents API.
+source "$release_dir/install/lib/common.sh"
+ensure_release_script_modes "$release_dir"
+
 bash "$release_dir/install/install.sh" --root "$root" --profile "$profile"
 ln -sfn "$release_dir" "$root/current.next"
 mv -Tf "$root/current.next" "$root/current"
