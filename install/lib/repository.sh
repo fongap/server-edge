@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 fetch_release() {
   local repo=$1 ref=$2 root=$3
-  local release_id archive tmp extract_dir
+  local release_id archive tmp extract_dir release_dir
   release_id="$(sanitize_ref "$ref")-$(date -u +%Y%m%d%H%M%S)"
   archive="$(mktemp)"
   tmp="$(mktemp -d)"
@@ -22,8 +22,11 @@ fetch_release() {
   [[ -n "$extract_dir" ]] || die "invalid GitHub archive"
 
   mkdir -p "$root/releases"
-  mv "$extract_dir" "$root/releases/$release_id"
+  release_dir="$root/releases/$release_id"
+  mv "$extract_dir" "$release_dir"
+  ensure_release_script_modes "$release_dir"
+
   rm -f "$archive"
   rm -rf "$tmp"
-  printf '%s\n' "$root/releases/$release_id"
+  printf '%s\n' "$release_dir"
 }
