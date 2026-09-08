@@ -9,8 +9,8 @@ services:
       - ${SERVER_EDGE_PROXY_CONFIG:?SERVER_EDGE_PROXY_CONFIG is required}:/etc/mihomo/config.yaml:ro
       - ${SERVER_EDGE_PROXY_STATE:?SERVER_EDGE_PROXY_STATE is required}:/var/lib/mihomo
     ports:
-      - "127.0.0.1:7890:7890/tcp"
-      - "127.0.0.1:7890:7890/udp"
+      - "${SERVER_EDGE_PROXY_BIND_IP:?SERVER_EDGE_PROXY_BIND_IP is required}:7890:7890/tcp"
+      - "${SERVER_EDGE_PROXY_BIND_IP:?SERVER_EDGE_PROXY_BIND_IP is required}:7890:7890/udp"
       - "${SERVER_EDGE_PROXY_CONTROLLER_BIND_IP:?SERVER_EDGE_PROXY_CONTROLLER_BIND_IP is required}:9090:9090/tcp"
     networks:
       edge_egress_ai:
