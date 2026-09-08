@@ -1,0 +1,38 @@
+name: server-edge-proxy-hub
+
+services:
+  proxy:
+    image: ${SERVER_EDGE_PROXY_IMAGE:?SERVER_EDGE_PROXY_IMAGE is required}
+    restart: unless-stopped
+    command: ["-d", "/var/lib/mihomo", "-f", "/etc/mihomo/config.yaml"]
+    volumes:
+      - ${SERVER_EDGE_PROXY_CONFIG:?SERVER_EDGE_PROXY_CONFIG is required}:/etc/mihomo/config.yaml:ro
+      - ${SERVER_EDGE_PROXY_STATE:?SERVER_EDGE_PROXY_STATE is required}:/var/lib/mihomo
+    ports:
+      - "127.0.0.1:7890:7890/tcp"
+      - "127.0.0.1:7890:7890/udp"
+      - "${SERVER_EDGE_PROXY_CONTROLLER_BIND_IP:?SERVER_EDGE_PROXY_CONTROLLER_BIND_IP is required}:9090:9090/tcp"
+    networks:
+      edge_egress_ai:
+        aliases: [proxy-hub]
+      edge_egress_workers:
+        aliases: [proxy-hub]
+      outbound: {}
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 20s
+
+networks:
+  edge_egress_ai:
+    external: true
+  edge_egress_workers:
+    external: true
+  outbound:
+    driver: bridge
