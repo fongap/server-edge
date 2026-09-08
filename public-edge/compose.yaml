@@ -1,0 +1,35 @@
+name: server-edge-public-edge
+
+services:
+  caddy:
+    image: ${SERVER_EDGE_PUBLIC_IMAGE:?SERVER_EDGE_PUBLIC_IMAGE is required}
+    restart: unless-stopped
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - ${SERVER_EDGE_PUBLIC_CADDYFILE:?SERVER_EDGE_PUBLIC_CADDYFILE is required}:/etc/caddy/Caddyfile:ro
+      - ${SERVER_EDGE_PUBLIC_DATA:?SERVER_EDGE_PUBLIC_DATA is required}:/data
+      - ${SERVER_EDGE_PUBLIC_CONFIG:?SERVER_EDGE_PUBLIC_CONFIG is required}:/config
+    networks:
+      - edge_service_proxy_public
+      - outbound
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 0.5
+    stop_grace_period: 20s
+
+networks:
+  edge_service_proxy_public:
+    external: true
+  outbound:
+    driver: bridge
