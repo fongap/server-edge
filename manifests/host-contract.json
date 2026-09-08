@@ -48,6 +48,29 @@
     "environment": {
       "allowed": ["cloud", "local", "unknown"]
     },
-    "support_levels": ["verified", "supported", "compatible", "unsupported"]
+    "support_levels": ["verified", "supported", "compatible", "unsupported"],
+    "verified_targets": [
+      {
+        "environment": "oracle-cloud",
+        "distribution": "ubuntu",
+        "version": "24.04",
+        "codename": "noble",
+        "architecture": "arm64",
+        "service_manager": "systemd",
+        "package_manager": "apt-get",
+        "runtime": "docker",
+        "compose": "v2",
+        "overlay": "tailscale",
+        "validation": [
+          "bootstrap",
+          "repeat-bootstrap",
+          "host-contract",
+          "infra-healthcheck",
+          "managed-networks",
+          "overlay-connected",
+          "shell-executable-mode"
+        ]
+      }
+    ]
   }
 }
