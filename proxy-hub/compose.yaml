@@ -9,7 +9,7 @@ services:
       - ${SERVER_EDGE_PROXY_CONFIG:?SERVER_EDGE_PROXY_CONFIG is required}:/etc/mihomo/config.yaml:ro
       - ${SERVER_EDGE_PROXY_STATE:?SERVER_EDGE_PROXY_STATE is required}:/var/lib/mihomo
     ports:
-      - "${SERVER_EDGE_PROXY_CONTROLLER_BIND_IP:?SERVER_EDGE_PROXY_CONTROLLER_BIND_IP is required}:9090:9090/tcp"
+      - "${SERVER_EDGE_PROXY_CONTROLLER_BIND_IP:?SERVER_EDGE_PROXY_CONTROLLER_BIND_IP is required}:${SERVER_EDGE_PROXY_CONTROLLER_PORT:?SERVER_EDGE_PROXY_CONTROLLER_PORT is required}:${SERVER_EDGE_PROXY_CONTROLLER_PORT:?SERVER_EDGE_PROXY_CONTROLLER_PORT is required}/tcp"
     networks:
       edge_egress_ai:
         aliases: [proxy-hub]
@@ -34,7 +34,7 @@ services:
     volumes:
       - ${SERVER_EDGE_PROXY_FEED_ROOT:?SERVER_EDGE_PROXY_FEED_ROOT is required}:/www:ro
     ports:
-      - "${SERVER_EDGE_PROXY_FEED_BIND_IP:?SERVER_EDGE_PROXY_FEED_BIND_IP is required}:8780:8080/tcp"
+      - "${SERVER_EDGE_PROXY_FEED_BIND_IP:?SERVER_EDGE_PROXY_FEED_BIND_IP is required}:${SERVER_EDGE_PROXY_FEED_PORT:?SERVER_EDGE_PROXY_FEED_PORT is required}:8080/tcp"
     networks:
       edge_service_proxy_public:
         aliases: [proxy-feed]
