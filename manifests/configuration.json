@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "instance_root": "/opt/server-edge/config",
+  "principles": {
+    "defaults_live_with_owner": true,
+    "instance_config_persists_across_releases": true,
+    "secrets_are_separate": true,
+    "domains_are_platform_publication_policy": true,
+    "cross_module_values_use_runtime_contracts": true,
+    "no_module_reads_another_module_config": true
+  },
+  "platform": {
+    "publications": {
+      "default": "config/publications.default.json",
+      "instance": "config/publications.json"
+    }
+  },
+  "module": {
+    "default_pattern": "<module>/config/defaults.env",
+    "instance_pattern": "config/<module>.env"
+  },
+  "runtime_contract_root": "runtime/contracts"
+}
