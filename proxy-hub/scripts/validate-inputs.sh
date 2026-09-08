@@ -9,7 +9,6 @@ provider_dir="$root/secrets/proxy-hub/providers"
 
 [[ -d "$provider_dir" ]] || die "proxy provider directory is missing: $provider_dir"
 mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
-[[ ${#providers[@]} -gt 0 ]] || die "proxy-hub requires at least one provider URL file in $provider_dir"
 
 for filename in "${providers[@]}"; do
   name="${filename%.url}"
@@ -24,4 +23,4 @@ for filename in "${providers[@]}"; do
   [[ "$url" == https://* ]] || die "provider URL must use HTTPS: $path"
 done
 
-log "proxy provider inputs accepted: ${#providers[@]} provider(s)"
+log "proxy provider inputs accepted: ${#providers[@]} optional provider(s); LOCAL node is always available"
