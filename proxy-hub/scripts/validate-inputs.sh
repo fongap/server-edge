@@ -8,14 +8,10 @@ root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 export SERVER_EDGE_ROOT="$root"
 source "$HERE/load-settings.sh"
 provider_dir="$root/secrets/proxy-hub/providers"
-providers=()
-if [[ -d "$provider_dir" ]]; then
-  mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
-fi
 
-if [[ "$SERVER_EDGE_PROXY_EGRESS" == provider || "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
-  [[ ${#providers[@]} -gt 0 ]] || die "egress mode $SERVER_EDGE_PROXY_EGRESS requires at least one provider URL file"
-fi
+[[ -d "$provider_dir" ]] || die "proxy provider directory is missing: $provider_dir"
+mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
+[[ ${#providers[@]} -gt 0 ]] || die "Proxy Hub requires at least one provider URL file for mandatory node aggregation"
 
 for filename in "${providers[@]}"; do
   name="${filename%.url}"
@@ -30,4 +26,4 @@ for filename in "${providers[@]}"; do
   [[ "$url" == https://* ]] || die "provider URL must use HTTPS: $path"
 done
 
-log "proxy inputs accepted: egress=$SERVER_EDGE_PROXY_EGRESS providers=${#providers[@]}"
+log "proxy aggregation inputs accepted: providers=${#providers[@]} local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
