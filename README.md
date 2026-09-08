@@ -29,6 +29,26 @@ Oracle Cloud、Ubuntu、本地服务器都只是部署目标，不是架构身�
 - `Supported`：存在正式 Host Adapter；
 - `Compatible`：满足 Host Contract，但尚未完成完整验证。
 
+## M1 Portable Linux Infra
+
+当前 M1 已实现 Host Detect、Host Contract 校验、首个 `apt + systemd` Adapter、Docker Engine + Compose Runtime、Tailscale Overlay、`edge_*` 网络和 Infra 健康检查。
+
+GitHub bootstrap 的最小前置是 Linux、root/sudo、`curl` 和 `tar`。Ubuntu/Debian + systemd 可自动补齐运行环境；其他 Linux 如果已具备兼容 Docker Engine + Compose 和基础工具，可按 Compatible 路径继续部署。
+
+Tailscale Overlay 支持：
+
+```text
+SERVER_EDGE_OVERLAY=auto      默认
+SERVER_EDGE_OVERLAY=off
+SERVER_EDGE_OVERLAY=required
+```
+
+自动认证 Secret 路径：
+
+```text
+/opt/server-edge/secrets/infra/tailscale-auth-key
+```
+
 ## 文档
 
 - `docs/ARCHITECTURE.md`：系统组成、边界、网络与运行模型；
@@ -52,7 +72,7 @@ curl -fsSL \
   | sudo bash -s -- --repo fongap/server-edge --ref <REF>
 ```
 
-默认安装根目录：`/opt/server-edge`。
+默认安装根目录：`/opt/server-edge`，可通过 `--root` 覆盖。
 
 ## Profile
 
