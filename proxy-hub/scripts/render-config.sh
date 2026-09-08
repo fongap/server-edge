@@ -38,14 +38,21 @@ cat >> "$tmp" <<'YAML'
 profile:
   store-selected: true
   store-fake-ip: false
-proxy-providers:
+proxies:
+  - name: LOCAL
+    type: direct
+    udp: true
 YAML
 
-for filename in "${providers[@]}"; do
-  name="${filename%.url}"
-  url="$(tr -d '\r\n' < "$provider_dir/$filename")"
-  url_escaped="${url//\'/\'\'}"
-  cat >> "$tmp" <<YAML
+if [[ ${#providers[@]} -gt 0 ]]; then
+  cat >> "$tmp" <<'YAML'
+proxy-providers:
+YAML
+  for filename in "${providers[@]}"; do
+    name="${filename%.url}"
+    url="$(tr -d '\r\n' < "$provider_dir/$filename")"
+    url_escaped="${url//\'/\'\'}"
+    cat >> "$tmp" <<YAML
   '$name':
     type: http
     url: '$url_escaped'
@@ -60,16 +67,16 @@ for filename in "${providers[@]}"; do
     override:
       additional-prefix: '[$name] '
 YAML
-done
+  done
 
-cat >> "$tmp" <<'YAML'
+  cat >> "$tmp" <<'YAML'
 proxy-groups:
   - name: AUTO
     type: url-test
     use:
 YAML
-for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
-cat >> "$tmp" <<'YAML'
+  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+  cat >> "$tmp" <<'YAML'
     url: 'https://cp.cloudflare.com'
     interval: 300
     tolerance: 100
@@ -78,23 +85,34 @@ cat >> "$tmp" <<'YAML'
     type: fallback
     use:
 YAML
-for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
-cat >> "$tmp" <<'YAML'
+  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+  cat >> "$tmp" <<'YAML'
     url: 'https://cp.cloudflare.com'
     interval: 300
     lazy: true
   - name: PROXY
     type: select
     proxies:
+      - LOCAL
       - AUTO
       - FALLBACK
-      - DIRECT
 rules:
   - MATCH,PROXY
 YAML
+else
+  cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - LOCAL
+rules:
+  - MATCH,PROXY
+YAML
+fi
 
 chown root:root "$tmp"
 chmod 600 "$tmp"
 mv -f "$tmp" "$output"
 trap - EXIT
-log "proxy config rendered: ${#providers[@]} provider(s)"
+log "proxy config rendered: LOCAL node + ${#providers[@]} provider(s)"
