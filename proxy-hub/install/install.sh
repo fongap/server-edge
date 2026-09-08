@@ -51,6 +51,7 @@ bash "$RELEASE_DIR/proxy-hub/scripts/write-runtime-env.sh"
 bash "$RELEASE_DIR/proxy-hub/scripts/render-config.sh"
 bash "$RELEASE_DIR/proxy-hub/scripts/render-feed.sh"
 bash "$RELEASE_DIR/proxy-hub/scripts/write-public-contract.sh"
+bash "$RELEASE_DIR/proxy-hub/scripts/write-egress-contract.sh"
 env_file="$runtime_dir/compose.env"
 # shellcheck disable=SC1090
 source "$env_file"
