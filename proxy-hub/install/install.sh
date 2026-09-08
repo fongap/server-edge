@@ -3,16 +3,22 @@ set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
+source "$RELEASE_DIR/proxy-hub/scripts/compose-files.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
+export SERVER_EDGE_ROOT="$root"
+config_dir="$root/config"
 secret_dir="$root/secrets/proxy-hub"
 state_dir="$root/state/proxy-hub"
 runtime_dir="$root/runtime/proxy-hub"
 controller_secret="$secret_dir/controller-secret"
+subscription_token="$secret_dir/subscription-token"
 
-mkdir -p "$secret_dir/providers" "$state_dir/providers" "$runtime_dir"
+mkdir -p "$config_dir" "$secret_dir/providers" "$state_dir/feed" "$runtime_dir"
 chown -R root:root "$secret_dir" "$state_dir" "$runtime_dir"
-chmod 700 "$secret_dir" "$secret_dir/providers" "$state_dir" "$state_dir/providers" "$runtime_dir"
+chmod 700 "$secret_dir" "$secret_dir/providers" "$state_dir" "$state_dir/feed" "$runtime_dir"
+
+source "$RELEASE_DIR/proxy-hub/scripts/load-settings.sh"
 
 if [[ ! -s "$controller_secret" ]]; then
   umask 077
@@ -22,18 +28,30 @@ if [[ ! -s "$controller_secret" ]]; then
   log "proxy controller secret generated"
 fi
 
-SERVER_EDGE_ROOT="$root" bash "$RELEASE_DIR/proxy-hub/scripts/render-config.sh"
-SERVER_EDGE_ROOT="$root" bash "$RELEASE_DIR/proxy-hub/scripts/write-runtime-env.sh"
-env_file="$runtime_dir/compose.env"
+if [[ ! -s "$subscription_token" ]]; then
+  umask 077
+  od -An -N24 -tx1 /dev/urandom | tr -d ' \n' > "$subscription_token"
+  chown root:root "$subscription_token"
+  chmod 600 "$subscription_token"
+  log "proxy subscription token generated"
+fi
 
-docker compose --env-file "$env_file" -f "$RELEASE_DIR/proxy-hub/compose.yaml" config >/dev/null
-image="$(grep '^SERVER_EDGE_PROXY_IMAGE=' "$env_file" | cut -d= -f2-)"
-docker pull "$image" >/dev/null
+bash "$RELEASE_DIR/proxy-hub/scripts/validate-inputs.sh"
+bash "$RELEASE_DIR/proxy-hub/scripts/write-runtime-env.sh"
+bash "$RELEASE_DIR/proxy-hub/scripts/render-config.sh"
+bash "$RELEASE_DIR/proxy-hub/scripts/render-feed.sh"
+env_file="$runtime_dir/compose.env"
+# shellcheck disable=SC1090
+source "$env_file"
+proxy_compose_files "$RELEASE_DIR" "$SERVER_EDGE_PROXY_EGRESS"
+
+docker compose --env-file "$env_file" "${PROXY_COMPOSE_ARGS[@]}" config >/dev/null
+docker compose --env-file "$env_file" "${PROXY_COMPOSE_ARGS[@]}" pull >/dev/null
 
 docker run --rm \
   -v "$runtime_dir/config.yaml:/etc/mihomo/config.yaml:ro" \
   -v "$state_dir:/var/lib/mihomo" \
-  "$image" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
+  "$SERVER_EDGE_PROXY_IMAGE" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
 
-docker compose --env-file "$env_file" -f "$RELEASE_DIR/proxy-hub/compose.yaml" up -d --remove-orphans
-log "proxy-hub installed"
+docker compose --env-file "$env_file" "${PROXY_COMPOSE_ARGS[@]}" up -d --remove-orphans
+log "proxy-hub installed: egress=$SERVER_EDGE_PROXY_EGRESS"
