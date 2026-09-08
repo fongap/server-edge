@@ -11,7 +11,7 @@ Secret     /opt/server-edge/secrets/
 运行契约   /opt/server-edge/runtime/contracts/
 ```
 
-默认模板用于首次初始化；实例配置创建后跨 Release 保留，升级不得覆盖。
+默认模板属于 Release；实例配置属于当前 Server Edge 实例，两者生命周期不同。
 
 ## 2. 模块配置
 
@@ -27,7 +27,26 @@ Secret     /opt/server-edge/secrets/
 /opt/server-edge/config/<module>.env
 ```
 
-模块只能读取自己的实例配置。禁止读取另一个模块的 `.env` 来形成隐式耦合。
+加载顺序固定为：
+
+```text
+Release defaults
+      ↓
+Instance overrides
+```
+
+首次安装可由默认模板初始化实例文件；后续升级不得覆盖已有实例文件。即使实例文件只覆盖少量参数，新 Release 增加的默认参数仍可自动生效。
+
+模块只能读取自己的配置。禁止读取另一个模块的 `.env` 来形成隐式耦合。
+
+当前已接入该模型：
+
+```text
+infra/config/defaults.env      -> /opt/server-edge/config/infra.env
+proxy-hub/config/defaults.env  -> /opt/server-edge/config/proxy-hub.env
+```
+
+尚未实现实际运行参数的模块，不提前创建空配置文件。
 
 ## 3. 域名与公网发布
 
@@ -68,7 +87,7 @@ config/publications.default.json
 /opt/server-edge/runtime/contracts/
 ```
 
-例如 Proxy Hub 可写出统一出口端点，AI Gateway 只消费契约，不硬编码 `7890`。
+例如 Proxy Hub 写出统一出口端点，AI Gateway 只消费契约，不硬编码具体端口。
 
 ## 5. 配置所有权
 
@@ -87,10 +106,12 @@ Profile 模块组合      profiles/*.json
 
 - 修改域名，不应修改业务模块代码；
 - 修改端口，不应要求消费者模块同步硬编码；
-- 修改 LOCAL 节点，不应影响订阅域名；
-- 关闭统一出口，不应关闭节点聚合；
+- 修改节点参数，不应影响域名发布策略；
+- 关闭可选出口，不应关闭节点聚合；
 - 切换实现版本，不应改实例业务参数；
 - Secret 不得转移到普通配置；
-- 升级不得覆盖已有实例配置。
+- 重复安装不得覆盖实例配置；
+- 升级新增默认参数必须兼容已有实例覆盖；
+- 不为尚未实现的模块预建空配置。
 
 机器可读规则见 `manifests/configuration.json`。
