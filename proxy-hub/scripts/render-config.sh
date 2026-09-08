@@ -27,7 +27,7 @@ mkdir -p "$runtime_dir"
 tmp="$(mktemp "$runtime_dir/config.yaml.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
-cat > "$tmp" <<'YAML'
+cat > "$tmp" <<YAML
 allow-lan: true
 bind-address: "*"
 mode: rule
@@ -36,21 +36,19 @@ ipv6: true
 find-process-mode: off
 unified-delay: true
 tcp-concurrent: true
-external-controller: "0.0.0.0:9090"
-YAML
-printf "secret: '%s'\n" "$controller_secret" >> "$tmp"
-cat >> "$tmp" <<'YAML'
+external-controller: "0.0.0.0:$SERVER_EDGE_PROXY_CONTROLLER_PORT"
+secret: '$controller_secret'
 profile:
   store-selected: true
   store-fake-ip: false
 YAML
 
-if [[ "$SERVER_EDGE_PROXY_EGRESS" != off ]]; then
-  printf 'mixed-port: 7890\n' >> "$tmp"
+if [[ "$SERVER_EDGE_PROXY_EGRESS_ENABLED" == true ]]; then
+  printf 'mixed-port: %s\n' "$SERVER_EDGE_PROXY_EGRESS_PORT" >> "$tmp"
 fi
 
-if [[ "$SERVER_EDGE_PROXY_EGRESS" == local || "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
-  cat >> "$tmp" <<'YAML'
+if [[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true ]]; then
+  cat >> "$tmp" <<YAML
 proxies:
   - name: LOCAL
     type: direct
@@ -58,38 +56,36 @@ proxies:
 listeners:
   - name: local-node
     type: socks
-    port: 7891
+    port: $SERVER_EDGE_PROXY_LOCAL_NODE_PORT
     listen: 0.0.0.0
     udp: true
     proxy: LOCAL
 YAML
 fi
 
-if [[ ${#providers[@]} -gt 0 ]]; then
-  cat >> "$tmp" <<'YAML'
+cat >> "$tmp" <<'YAML'
 proxy-providers:
 YAML
-  for filename in "${providers[@]}"; do
-    name="${filename%.url}"
-    url="$(tr -d '\r\n' < "$provider_dir/$filename")"
-    url_escaped="${url//\'/\'\'}"
-    cat >> "$tmp" <<YAML
+for filename in "${providers[@]}"; do
+  name="${filename%.url}"
+  url="$(tr -d '\r\n' < "$provider_dir/$filename")"
+  url_escaped="${url//\'/\'\'}"
+  cat >> "$tmp" <<YAML
   '$name':
     type: http
     url: '$url_escaped'
     path: './feed/$feed_token/providers/$name.yaml'
-    interval: 21600
+    interval: $SERVER_EDGE_PROXY_PROVIDER_INTERVAL
     health-check:
       enable: true
-      url: 'https://cp.cloudflare.com'
-      interval: 600
-      timeout: 5000
+      url: '$SERVER_EDGE_PROXY_HEALTH_URL'
+      interval: $SERVER_EDGE_PROXY_HEALTH_INTERVAL
+      timeout: $SERVER_EDGE_PROXY_HEALTH_TIMEOUT
       lazy: true
     override:
       additional-prefix: '[$name] '
 YAML
-  done
-fi
+done
 
 write_provider_use() {
   local filename
@@ -98,85 +94,55 @@ write_provider_use() {
   done
 }
 
-case "$SERVER_EDGE_PROXY_EGRESS" in
-  off)
-    if [[ ${#providers[@]} -gt 0 ]]; then
-      cat >> "$tmp" <<'YAML'
-proxy-groups:
-  - name: PROVIDER-CACHE
-    type: select
-    hidden: true
-    use:
-YAML
-      write_provider_use
-    fi
-    cat >> "$tmp" <<'YAML'
-rules:
-  - MATCH,DIRECT
-YAML
-    ;;
-  local)
-    cat >> "$tmp" <<'YAML'
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies:
-      - LOCAL
-YAML
-    if [[ ${#providers[@]} -gt 0 ]]; then
-      cat >> "$tmp" <<'YAML'
-  - name: PROVIDER-CACHE
-    type: select
-    hidden: true
-    use:
-YAML
-      write_provider_use
-    fi
-    cat >> "$tmp" <<'YAML'
-rules:
-  - MATCH,PROXY
-YAML
-    ;;
-  provider|hybrid)
-    cat >> "$tmp" <<'YAML'
+cat >> "$tmp" <<'YAML'
 proxy-groups:
   - name: AUTO
     type: url-test
     use:
 YAML
-    write_provider_use
-    cat >> "$tmp" <<'YAML'
-    url: 'https://cp.cloudflare.com'
-    interval: 300
-    tolerance: 100
+write_provider_use
+cat >> "$tmp" <<YAML
+    url: '$SERVER_EDGE_PROXY_HEALTH_URL'
+    interval: $SERVER_EDGE_PROXY_PROBE_INTERVAL
+    tolerance: $SERVER_EDGE_PROXY_AUTO_TOLERANCE
     lazy: true
   - name: FALLBACK
     type: fallback
     use:
 YAML
-    write_provider_use
-    cat >> "$tmp" <<'YAML'
-    url: 'https://cp.cloudflare.com'
-    interval: 300
+write_provider_use
+cat >> "$tmp" <<YAML
+    url: '$SERVER_EDGE_PROXY_HEALTH_URL'
+    interval: $SERVER_EDGE_PROXY_PROBE_INTERVAL
     lazy: true
   - name: PROXY
     type: select
     proxies:
 YAML
-    if [[ "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
-      printf '      - LOCAL\n' >> "$tmp"
-    fi
-    cat >> "$tmp" <<'YAML'
+if [[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true ]]; then
+  printf '      - LOCAL\n' >> "$tmp"
+fi
+cat >> "$tmp" <<'YAML'
       - AUTO
       - FALLBACK
-rules:
-  - MATCH,PROXY
 YAML
-    ;;
-esac
+
+if [[ "$SERVER_EDGE_PROXY_EGRESS_ENABLED" == true ]]; then
+  case "$SERVER_EDGE_PROXY_EGRESS_POLICY" in
+    auto) target=AUTO ;;
+    fallback) target=FALLBACK ;;
+    select) target=PROXY ;;
+  esac
+  printf 'rules:\n  - MATCH,%s\n' "$target" >> "$tmp"
+else
+  cat >> "$tmp" <<'YAML'
+rules:
+  - MATCH,DIRECT
+YAML
+fi
 
 chown root:root "$tmp"
 chmod 600 "$tmp"
 mv -f "$tmp" "$output"
 trap - EXIT
-log "proxy config rendered: egress=$SERVER_EDGE_PROXY_EGRESS providers=${#providers[@]}"
+log "proxy config rendered: aggregation=required providers=${#providers[@]} local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
