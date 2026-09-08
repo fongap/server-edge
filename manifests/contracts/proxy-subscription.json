@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "contract": "proxy-subscription",
+  "producer": "proxy-hub",
+  "consumer": "public-edge",
+  "network": "edge_service_proxy_public",
+  "upstream": "http://proxy-feed:8080",
+  "public_origin": {
+    "optional": true,
+    "scheme": "https"
+  },
+  "secret_fields": []
+}
