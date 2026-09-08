@@ -64,34 +64,44 @@ SERVER_EDGE_OVERLAY=required
 
 ## M2 Proxy Hub
 
-M2 当前实现固定使用 Mihomo `v1.19.30`，采用单代理核心：
+M2 当前实现固定使用 Mihomo `v1.19.30`，采用单代理核心。
 
-- 多订阅 `proxy-providers` 聚合；
-- Provider 健康检查；
-- `AUTO` 自动选优；
-- `FALLBACK` 故障切换；
-- HTTP/SOCKS Mixed Port `7890`；
-- Controller `9090`；
-- 不启用 TUN，不劫持宿主流量；
-- 不引入 Sub-Store、第二代理核心或常驻 Dashboard。
-
-在启用 Proxy Hub 的 Profile 下安装前，至少准备一个 Provider Secret：
-
-```bash
-sudo mkdir -p /opt/server-edge/secrets/proxy-hub/providers
-sudo sh -c 'printf "%s\n" "https://example.com/subscription" > /opt/server-edge/secrets/proxy-hub/providers/primary.url'
-sudo chmod 600 /opt/server-edge/secrets/proxy-hub/providers/primary.url
-```
-
-每个 `*.url` 只保存一个 HTTPS 订阅地址，Owner 必须为 `root`。真实订阅 URL 和 Controller Secret 都不进入 Git。
-
-运行后：
+第一节点始终是：
 
 ```text
-Host local proxy     127.0.0.1:7890
-Container proxy      proxy-hub:7890
-Controller           Tailscale IPv4:9090（无 Tailnet 时仅 127.0.0.1）
+LOCAL
 ```
+
+`LOCAL` 使用 Mihomo `type: direct`，表示当前 Server Edge 宿主自身的公网出口。部署在当前 Oracle Cloud Compute 时，`LOCAL` 就是 Oracle 节点；代码本身不硬编码 Oracle，因此部署到其他 Linux 主机时仍保持可移植。
+
+基础形态不要求任何外部订阅：
+
+```text
+PROXY
+└── LOCAL
+```
+
+如果 Tailscale 已连接，宿主 Mixed Port `7890` 与 Controller `9090` 都只绑定 Tailscale IPv4；因此 Tailnet 内其他设备可直接把该宿主作为 HTTP/SOCKS 代理节点使用。没有 Tailnet 时只绑定 `127.0.0.1`。
+
+外部订阅是可选扩展。加入 `proxy-providers` 后：
+
+```text
+PROXY
+├── LOCAL
+├── AUTO
+└── FALLBACK
+    └── external providers
+```
+
+M2 不启用 TUN，不劫持宿主流量，也不引入 Sub-Store、第二代理核心或常驻 Dashboard。
+
+可选 Provider Secret 路径：
+
+```text
+/opt/server-edge/secrets/proxy-hub/providers/*.url
+```
+
+每个文件只保存一个 HTTPS 订阅地址，Owner 必须为 `root`，权限必须为 `0600` 或 `0400`。真实订阅 URL 和 Controller Secret 都不进入 Git。
 
 ## 文档
 
