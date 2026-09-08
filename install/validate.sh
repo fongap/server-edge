@@ -4,10 +4,20 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$HERE/.." && pwd)"
 source "$HERE/lib/common.sh"
 
+mode=host
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --static) mode=static; shift ;;
+    *) die "unknown argument: $1" ;;
+  esac
+done
+
 need_cmd bash
 need_cmd jq
-need_cmd docker
-docker compose version >/dev/null || die "Docker Compose v2 is required"
+if [[ "$mode" == host ]]; then
+  need_cmd docker
+  docker compose version >/dev/null || die "Docker Compose v2 is required"
+fi
 
 jq -e '.schema_version == 1 and (.modules | type == "array")' "$ROOT_DIR/manifests/modules.json" >/dev/null \
   || die "invalid manifests/modules.json"
@@ -42,4 +52,4 @@ scripts=(
   "$ROOT_DIR"/infra/install/*.sh
 )
 bash -n "${scripts[@]}"
-log "validation passed"
+log "validation passed ($mode)"
