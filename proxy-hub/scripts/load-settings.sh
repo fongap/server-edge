@@ -24,9 +24,8 @@ esac
 
 base_url="${SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL:-auto}"
 if [[ "$base_url" != auto ]]; then
-  [[ "$base_url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] \
-    || die "SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL must be auto or an HTTPS origin without a path"
-  base_url="${base_url%/}"
+  [[ "$base_url" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+    || die "SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL must be auto or an HTTPS origin without a path or port"
 fi
 
 export SERVER_EDGE_PROXY_EGRESS
