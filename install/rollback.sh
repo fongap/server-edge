@@ -14,6 +14,6 @@ done
 [[ -n "$target" ]] || die "--to is required"
 target_dir="$root/releases/$target"
 [[ -d "$target_dir" ]] || die "release not found: $target"
-"$target_dir/install/validate.sh"
+bash "$target_dir/install/validate.sh"
 atomic_symlink "$target_dir" "$root/current"
 log "current -> $target"
