@@ -9,8 +9,6 @@ services:
       - ${SERVER_EDGE_PROXY_CONFIG:?SERVER_EDGE_PROXY_CONFIG is required}:/etc/mihomo/config.yaml:ro
       - ${SERVER_EDGE_PROXY_STATE:?SERVER_EDGE_PROXY_STATE is required}:/var/lib/mihomo
     ports:
-      - "${SERVER_EDGE_PROXY_BIND_IP:?SERVER_EDGE_PROXY_BIND_IP is required}:7890:7890/tcp"
-      - "${SERVER_EDGE_PROXY_BIND_IP:?SERVER_EDGE_PROXY_BIND_IP is required}:7890:7890/udp"
       - "${SERVER_EDGE_PROXY_CONTROLLER_BIND_IP:?SERVER_EDGE_PROXY_CONTROLLER_BIND_IP is required}:9090:9090/tcp"
     networks:
       edge_egress_ai:
@@ -29,10 +27,31 @@ services:
     cpus: 1.0
     stop_grace_period: 20s
 
+  feed:
+    image: ${SERVER_EDGE_PROXY_FEED_IMAGE:?SERVER_EDGE_PROXY_FEED_IMAGE is required}
+    restart: unless-stopped
+    command: ["httpd", "-f", "-p", "8080", "-h", "/www"]
+    volumes:
+      - ${SERVER_EDGE_PROXY_FEED_ROOT:?SERVER_EDGE_PROXY_FEED_ROOT is required}:/www:ro
+    ports:
+      - "${SERVER_EDGE_PROXY_FEED_BIND_IP:?SERVER_EDGE_PROXY_FEED_BIND_IP is required}:8780:8080/tcp"
+    networks:
+      edge_service_proxy_public:
+        aliases: [proxy-feed]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.25
+
 networks:
   edge_egress_ai:
     external: true
   edge_egress_workers:
+    external: true
+  edge_service_proxy_public:
     external: true
   outbound:
     driver: bridge
