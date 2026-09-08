@@ -17,7 +17,6 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$target_ref" ]] || die "--ref is required"
 [[ -f "$root/runtime/install.env" ]] || die "missing runtime/install.env"
-# shellcheck disable=SC1090
 source "$root/runtime/install.env"
 repo="${SERVER_EDGE_REPOSITORY:-}"
 [[ -n "$repo" ]] || die "repository metadata missing"
@@ -26,7 +25,7 @@ current_version="$(cat "$CURRENT_RELEASE/VERSION")"
 target_release="$(fetch_release "$repo" "$target_ref" "$root")"
 target_version="$(cat "$target_release/VERSION")"
 
-"$target_release/install/validate.sh"
+bash "$target_release/install/validate.sh"
 patch_manifest="$target_release/patches/index.json"
 entry="$(jq -c --arg from "$current_version" --arg to "$target_version" \
   '.patches[]? | select(.from == $from and .to == $to)' "$patch_manifest" | head -n1)"
