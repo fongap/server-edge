@@ -1,11 +1,4 @@
 {
   "schema_version": 1,
-  "patches": [
-    {
-      "from": "0.1.0",
-      "to": "0.1.1",
-      "modules": ["infra"],
-      "backup_required": false
-    }
-  ]
+  "patches": []
 }
