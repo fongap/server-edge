@@ -4,6 +4,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
 
+[[ $EUID -eq 0 ]] || die "run infra health check with sudo/root"
+
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 docker info >/dev/null || die "Docker health check failed"
 docker compose version >/dev/null || die "Compose health check failed"
