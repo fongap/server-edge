@@ -1,0 +1,5 @@
+services:
+  proxy:
+    ports:
+      - "${SERVER_EDGE_PROXY_NODE_BIND_IP:?SERVER_EDGE_PROXY_NODE_BIND_IP is required}:7891:7891/tcp"
+      - "${SERVER_EDGE_PROXY_NODE_BIND_IP:?SERVER_EDGE_PROXY_NODE_BIND_IP is required}:7891:7891/udp"
