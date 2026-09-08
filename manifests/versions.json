@@ -1,5 +1,10 @@
 {
   "schema_version": 1,
-  "server_edge": "0.1.0",
-  "components": {}
+  "server_edge": "0.2.0",
+  "components": {
+    "mihomo": {
+      "version": "1.19.30",
+      "image": "metacubex/mihomo:v1.19.30"
+    }
+  }
 }
