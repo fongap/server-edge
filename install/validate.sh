@@ -28,6 +28,13 @@ jq -e '.schema_version == 1 and .host_contract.os.allowed == ["linux"] and .host
   || die "invalid manifests/host-contract.json"
 jq -e '.schema_version == 1' "$ROOT_DIR/profiles/default.json" >/dev/null \
   || die "invalid default profile"
+jq -e '.schema_version == 1 and (.server_edge | type == "string") and (.components.mihomo.version | type == "string") and (.components.mihomo.image | type == "string")' \
+  "$ROOT_DIR/manifests/versions.json" >/dev/null \
+  || die "invalid manifests/versions.json"
+
+repo_version="$(tr -d '\r\n' < "$ROOT_DIR/VERSION")"
+manifest_version="$(jq -r '.server_edge' "$ROOT_DIR/manifests/versions.json")"
+[[ "$repo_version" == "$manifest_version" ]] || die "VERSION and manifests/versions.json differ: $repo_version != $manifest_version"
 
 expected='["infra","app-hub","proxy-hub","ai-gateway","ai-workers","public-edge"]'
 actual="$(jq -c '[.modules[].name]' "$ROOT_DIR/manifests/modules.json")"
@@ -37,19 +44,12 @@ for module in infra app-hub proxy-hub ai-gateway ai-workers public-edge; do
   [[ -d "$ROOT_DIR/$module" ]] || die "missing module directory: $module"
 done
 
-for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md VERSION; do
+for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md proxy-hub/compose.yaml VERSION; do
   [[ -s "$ROOT_DIR/$file" ]] || die "missing or empty: $file"
 done
 
-scripts=(
-  "$HERE"/*.sh
-  "$HERE"/lib/*.sh
-  "$ROOT_DIR"/infra/host/*.sh
-  "$ROOT_DIR"/infra/host/adapters/package/*.sh
-  "$ROOT_DIR"/infra/runtime/container/*.sh
-  "$ROOT_DIR"/infra/network/*.sh
-  "$ROOT_DIR"/infra/network/overlay/*.sh
-  "$ROOT_DIR"/infra/install/*.sh
-)
+scripts=()
+while IFS= read -r -d '' script; do scripts+=("$script"); done < <(find "$ROOT_DIR" -type f -name '*.sh' -not -path '*/.git/*' -print0 | sort -z)
+[[ ${#scripts[@]} -gt 0 ]] || die "no shell scripts found"
 bash -n "${scripts[@]}"
 log "validation passed ($mode)"
