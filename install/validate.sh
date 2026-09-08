@@ -7,6 +7,7 @@ source "$HERE/lib/common.sh"
 need_cmd bash
 need_cmd jq
 need_cmd docker
+docker compose version >/dev/null || die "Docker Compose v2 is required"
 
 jq -e '.schema_version == 1 and (.modules | type == "array")' "$ROOT_DIR/manifests/modules.json" >/dev/null \
   || die "invalid manifests/modules.json"
@@ -30,7 +31,15 @@ for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md VERSIO
   [[ -s "$ROOT_DIR/$file" ]] || die "missing or empty: $file"
 done
 
-[[ -s "$ROOT_DIR/infra/host/README.md" ]] || die "missing or empty: infra/host/README.md"
-
-bash -n "$HERE"/*.sh "$HERE"/lib/*.sh "$ROOT_DIR/infra/network/provision.sh"
+scripts=(
+  "$HERE"/*.sh
+  "$HERE"/lib/*.sh
+  "$ROOT_DIR"/infra/host/*.sh
+  "$ROOT_DIR"/infra/host/adapters/package/*.sh
+  "$ROOT_DIR"/infra/runtime/container/*.sh
+  "$ROOT_DIR"/infra/network/*.sh
+  "$ROOT_DIR"/infra/network/overlay/*.sh
+  "$ROOT_DIR"/infra/install/*.sh
+)
+bash -n "${scripts[@]}"
 log "validation passed"
