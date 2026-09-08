@@ -52,6 +52,7 @@ for file in \
   docs/GOVERNANCE.md \
   docs/HOST-CONTRACT.md \
   manifests/contracts/proxy-subscription.json \
+  proxy-hub/config/defaults.env \
   proxy-hub/compose.yaml \
   proxy-hub/compose.egress.yaml \
   proxy-hub/compose.local-node.yaml \
