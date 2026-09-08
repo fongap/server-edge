@@ -13,6 +13,11 @@ source "$RELEASE_DIR/public-edge/scripts/load-subscription-contract.sh"
 if [[ "$SERVER_EDGE_PUBLIC_ACTIVE" != true ]]; then
   if [[ -s "$env_file" ]]; then
     docker compose --env-file "$env_file" -f "$RELEASE_DIR/public-edge/compose.yaml" down --remove-orphans >/dev/null 2>&1 || true
+  else
+    mapfile -t stale < <(docker ps -aq --filter label=com.docker.compose.project=server-edge-public-edge)
+    if [[ ${#stale[@]} -gt 0 ]]; then docker rm -f "${stale[@]}" >/dev/null; fi
+    mapfile -t stale_networks < <(docker network ls -q --filter label=com.docker.compose.project=server-edge-public-edge)
+    if [[ ${#stale_networks[@]} -gt 0 ]]; then docker network rm "${stale_networks[@]}" >/dev/null 2>&1 || true; fi
   fi
   mkdir -p "$runtime_dir"
   printf 'inactive\n' > "$runtime_dir/status"
