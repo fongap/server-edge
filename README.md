@@ -1,6 +1,6 @@
 # Server Edge
 
-Server Edge 是面向长期运行边缘节点的模块化部署底座。一级能力域固定为：
+Server Edge 是面向云主机与本地 Linux 主机的模块化边缘服务平台。它不绑定 Oracle、Ubuntu 或某一类物理设备；上层能力模块统一依赖 Host Contract，宿主差异由 `infra/host` 处理。
 
 ```text
 server-edge/
@@ -14,13 +14,31 @@ server-edge/
 
 `infra` 是初始化与管理底座；其余五个模块均为可插拔能力。能力名稳定，具体实现可替换。
 
+## 部署目标
+
+Server Edge 面向满足 Host Contract 的 Linux 主机，包括：
+
+- Oracle Cloud、AWS、Azure、Google Cloud、Hetzner、Vultr、DigitalOcean 等云主机；
+- 家用服务器、迷你主机、工作站、Bare Metal 等本地 Linux 主机。
+
+Oracle Cloud、Ubuntu、本地服务器都只是部署目标，不是架构身份。
+
+支持等级：
+
+- `Verified`：完成 CI 或实机验证；
+- `Supported`：存在正式 Host Adapter；
+- `Compatible`：满足 Host Contract，但尚未完成完整验证。
+
 ## 文档
 
-- `ARCHITECTURE.md`：定义系统组成、边界、网络与运行模型。
-- `GOVERNANCE.md`：定义允许和禁止的变更。
-- `manifests/`：定义可机器校验的系统契约。
-- `profiles/`：选择本节点启用的能力模块。
+- `docs/ARCHITECTURE.md`：系统组成、边界、网络与运行模型；
+- `docs/GOVERNANCE.md`：允许和禁止的变更；
+- `docs/HOST-CONTRACT.md`：Linux 宿主必须满足的能力契约；
+- `manifests/`：机器可读系统契约；
+- `profiles/`：选择本节点启用的能力模块；
 - `install/`：安装、Patch、回滚和验证入口。
+
+所有实现与变更必须遵循 `docs/ARCHITECTURE.md`、`docs/GOVERNANCE.md` 和 `docs/HOST-CONTRACT.md`。
 
 ## GitHub 安装
 
@@ -34,19 +52,11 @@ curl -fsSL \
   | sudo bash -s -- --repo fongap/server-edge --ref <REF>
 ```
 
-私有仓库可通过 GitHub API 获取引导脚本：
-
-```bash
-curl -fsSL \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  -H "Accept: application/vnd.github.raw+json" \
-  "https://api.github.com/repos/fongap/server-edge/contents/install/bootstrap.sh?ref=<REF>" \
-  | sudo -E bash -s -- --repo fongap/server-edge --ref <REF>
-```
-
 默认安装根目录：`/opt/server-edge`。
 
 ## Profile
+
+Profile 只描述启用哪些能力模块，不描述云厂商或 Linux 发行版：
 
 ```bash
 sudo /opt/server-edge/current/install/install.sh \
@@ -54,7 +64,7 @@ sudo /opt/server-edge/current/install/install.sh \
   --profile profiles/default.json
 ```
 
-`profiles/default.json` 默认启用全部能力域；可复制后按节点用途关闭不需要的插件模块。
+禁止建立 `oracle.json`、`aws.json`、`home-server.json` 这类宿主环境 Profile。宿主差异由 `infra/host` 自动识别并处理。
 
 ## Patch
 
