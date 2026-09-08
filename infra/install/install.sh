@@ -6,9 +6,9 @@ source "$RELEASE_DIR/install/lib/common.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 mkdir -p "$root"/{config,state,secrets,runtime,backups,shared/assets,releases}
-mkdir -p "$root/state/infra" "$root/secrets/infra"
-chown root:root "$root/config" "$root/secrets" "$root/secrets/infra"
-chmod 755 "$root/config"
+mkdir -p "$root/runtime/contracts" "$root/state/infra" "$root/secrets/infra"
+chown root:root "$root/config" "$root/runtime/contracts" "$root/secrets" "$root/secrets/infra"
+chmod 755 "$root/config" "$root/runtime/contracts"
 chmod 700 "$root/secrets" "$root/secrets/infra"
 
 bash "$RELEASE_DIR/infra/network/provision.sh"
