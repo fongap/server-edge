@@ -21,6 +21,14 @@ jobs:
       - name: Validate repository
         run: bash install/validate.sh --static
 
+      - name: Validate Proxy Hub compose
+        env:
+          SERVER_EDGE_PROXY_IMAGE: metacubex/mihomo:v1.19.30
+          SERVER_EDGE_PROXY_CONFIG: /tmp/server-edge-proxy-config.yaml
+          SERVER_EDGE_PROXY_STATE: /tmp/server-edge-proxy-state
+          SERVER_EDGE_PROXY_CONTROLLER_BIND_IP: 127.0.0.1
+        run: docker compose -f proxy-hub/compose.yaml config >/dev/null
+
       - name: Validate release script permissions
         run: |
           tmp="$(mktemp -d)"
