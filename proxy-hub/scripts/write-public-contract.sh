@@ -13,8 +13,8 @@ contract_file="$contract_dir/proxy-subscription.json"
 source "$env_file"
 
 public_origin=null
-if [[ "$SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL" == https://* ]]; then
-  public_origin="$SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL"
+if [[ "$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN" == https://* ]]; then
+  public_origin="$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN"
 fi
 
 mkdir -p "$contract_dir"
