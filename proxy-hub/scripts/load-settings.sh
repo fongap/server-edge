@@ -35,8 +35,18 @@ validate_uint() {
   [[ "$value" =~ ^[0-9]+$ ]] || die "$name must be a non-negative integer"
 }
 
-validate_bool SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED
-validate_bool SERVER_EDGE_PROXY_EGRESS_ENABLED
+for name in SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH SERVER_EDGE_PROXY_EGRESS_ENABLED; do
+  validate_bool "$name"
+done
+[[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true || "$SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH" == false ]] \
+  || die "LOCAL node cannot be published when SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false"
+
+advertise_host="$SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST"
+if [[ "$advertise_host" != auto ]]; then
+  [[ "$advertise_host" =~ ^[A-Za-z0-9][A-Za-z0-9.:-]*$ ]] \
+    || die "SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST must be auto or a host/IP without scheme or path"
+fi
+
 for name in SERVER_EDGE_PROXY_FEED_BIND SERVER_EDGE_PROXY_CONTROLLER_BIND SERVER_EDGE_PROXY_LOCAL_NODE_BIND SERVER_EDGE_PROXY_EGRESS_BIND; do
   validate_bind "$name"
 done
