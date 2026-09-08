@@ -33,6 +33,8 @@ feed_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_FEED_BIND")"
 controller_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_CONTROLLER_BIND")"
 node_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_LOCAL_NODE_BIND")"
 egress_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_EGRESS_BIND")"
+node_advertise_host="$SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST"
+[[ "$node_advertise_host" != auto ]] || node_advertise_host="$node_bind_ip"
 
 feed_token_file="$root/secrets/proxy-hub/subscription-token"
 [[ -s "$feed_token_file" ]] || die "missing subscription token"
@@ -56,9 +58,10 @@ SERVER_EDGE_PROXY_FEED_BIND_IP=$feed_bind_ip
 SERVER_EDGE_PROXY_CONTROLLER_BIND_IP=$controller_bind_ip
 SERVER_EDGE_PROXY_NODE_BIND_IP=$node_bind_ip
 SERVER_EDGE_PROXY_EGRESS_BIND_IP=$egress_bind_ip
-SERVER_EDGE_PROXY_NODE_HOST=$node_bind_ip
+SERVER_EDGE_PROXY_NODE_HOST=$node_advertise_host
 SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=$subscription_origin
 SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED
+SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=$SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH
 SERVER_EDGE_PROXY_EGRESS_ENABLED=$SERVER_EDGE_PROXY_EGRESS_ENABLED
 SERVER_EDGE_PROXY_EGRESS_POLICY=$SERVER_EDGE_PROXY_EGRESS_POLICY
 SERVER_EDGE_PROXY_EGRESS_PORT=$SERVER_EDGE_PROXY_EGRESS_PORT
@@ -74,4 +77,4 @@ SERVER_EDGE_PROXY_AUTO_TOLERANCE=$SERVER_EDGE_PROXY_AUTO_TOLERANCE
 EOF_ENV
 chown root:root "$env_file"
 chmod 600 "$env_file"
-log "proxy runtime env written: providers=required local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
+log "proxy runtime env written: aggregation=required local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED/$SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
