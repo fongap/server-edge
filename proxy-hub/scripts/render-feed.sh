@@ -63,27 +63,46 @@ YAML
       lazy: true
 YAML
   done
-fi
 
-if [[ "$has_local" == true || ${#providers[@]} -gt 0 ]]; then
+  cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: AUTO
+    type: url-test
+    use:
+YAML
+  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+  cat >> "$tmp" <<'YAML'
+    url: 'https://cp.cloudflare.com'
+    interval: 300
+    tolerance: 100
+    lazy: true
+  - name: FALLBACK
+    type: fallback
+    use:
+YAML
+  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+  cat >> "$tmp" <<'YAML'
+    url: 'https://cp.cloudflare.com'
+    interval: 300
+    lazy: true
+  - name: PROXY
+    type: select
+    proxies:
+YAML
+  if [[ "$has_local" == true ]]; then printf '      - LOCAL\n' >> "$tmp"; fi
+  cat >> "$tmp" <<'YAML'
+      - AUTO
+      - FALLBACK
+rules:
+  - MATCH,PROXY
+YAML
+elif [[ "$has_local" == true ]]; then
   cat >> "$tmp" <<'YAML'
 proxy-groups:
   - name: PROXY
     type: select
-YAML
-  if [[ "$has_local" == true ]]; then
-    cat >> "$tmp" <<'YAML'
     proxies:
       - LOCAL
-YAML
-  fi
-  if [[ ${#providers[@]} -gt 0 ]]; then
-    cat >> "$tmp" <<'YAML'
-    use:
-YAML
-    for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
-  fi
-  cat >> "$tmp" <<'YAML'
 rules:
   - MATCH,PROXY
 YAML
