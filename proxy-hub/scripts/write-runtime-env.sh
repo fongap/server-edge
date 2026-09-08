@@ -3,6 +3,7 @@ set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
+source "$RELEASE_DIR/install/lib/config.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 export SERVER_EDGE_ROOT="$root"
@@ -41,8 +42,11 @@ feed_token_file="$root/secrets/proxy-hub/subscription-token"
 feed_token="$(tr -d '\r\n' < "$feed_token_file")"
 [[ "$feed_token" =~ ^[A-Fa-f0-9]{48}$ ]] || die "subscription token must be 48 hexadecimal characters"
 
-subscription_origin="$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN"
-if [[ "$subscription_origin" == auto ]]; then
+subscription_origin="$(resolve_publication_origin "$root" proxy-subscription)"
+if [[ -n "$subscription_origin" ]]; then
+  [[ "$subscription_origin" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+    || die "publication proxy-subscription origin must be a canonical HTTPS origin without path or port"
+else
   subscription_origin="http://$feed_bind_ip:$SERVER_EDGE_PROXY_FEED_PORT"
 fi
 
