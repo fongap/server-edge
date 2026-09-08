@@ -30,6 +30,19 @@ jobs:
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' proxy-hub"
           sudo grep -q '^SERVER_EDGE_PROXY_EGRESS_PORT=17890$' "$tmp/config/proxy-hub.env"
 
+      - name: Validate Infra config lifecycle
+        run: |
+          tmp="$(mktemp -d)"
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_platform_config '$PWD' '$tmp'; ensure_module_config '$PWD' '$tmp' infra"
+          sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=auto$' "$tmp/config/infra.env"
+          cat <<'EOF' | sudo tee "$tmp/config/infra.env" >/dev/null
+          SERVER_EDGE_INFRA_OVERLAY=off
+          EOF
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' infra"
+          sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=off$' "$tmp/config/infra.env"
+          values="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source infra/scripts/load-settings.sh; printf "%s|%s|%s\n" "$SERVER_EDGE_INFRA_OVERLAY" "$SERVER_EDGE_INFRA_TAILSCALE_HOSTNAME" "$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"')"
+          [[ "$values" == 'off|auto|false' ]]
+
       - name: Validate Proxy Hub compose
         env:
           SERVER_EDGE_PROXY_IMAGE: metacubex/mihomo:v1.19.30
