@@ -94,6 +94,7 @@ jobs:
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-public-contract.sh
+            sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
             sudo docker run --rm \
               -v "$tmp/runtime/proxy-hub/config.yaml:/etc/mihomo/config.yaml:ro" \
               -v "$tmp/state/proxy-hub:/var/lib/mihomo" \
@@ -104,6 +105,7 @@ jobs:
             feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
             sudo grep -q "server: 'node.example.test'" "$feed"
             sudo grep -q "url: 'https://sub.example.com/$(printf '%048d' 1)/providers/primary.yaml'" "$feed"
+            sudo jq -e '.enabled == true and .endpoint == "http://proxy-hub:17890"' "$tmp/runtime/contracts/proxy-egress.json" >/dev/null
             case "$policy" in
               auto) sudo grep -q '^  - MATCH,AUTO$' "$tmp/runtime/proxy-hub/config.yaml" ;;
               fallback) sudo grep -q '^  - MATCH,FALLBACK$' "$tmp/runtime/proxy-hub/config.yaml" ;;
@@ -133,6 +135,7 @@ jobs:
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-runtime-env.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
           if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then
             echo 'ERROR: disabled egress rendered mixed-port' >&2; exit 1
           fi
@@ -143,6 +146,7 @@ jobs:
           if sudo grep -q '^  - name: LOCAL$' "$feed"; then
             echo 'ERROR: disabled LOCAL node was published' >&2; exit 1
           fi
+          sudo jq -e '.enabled == false and .endpoint == null' "$tmp/runtime/contracts/proxy-egress.json" >/dev/null
 
       - name: Validate Public Edge subscription route
         run: |
