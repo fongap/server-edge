@@ -8,16 +8,18 @@
 2. 模块职责单一。
 3. 除 `infra` 外，一级能力模块默认可插拔。
 4. 模块依赖契约，不依赖内部实现。
-5. 配置、状态、数据、Secret 分离。
-6. 管理面、入站面、服务面、出站面、数据面分离。
-7. 最小暴露、最小权限、最小长期依赖。
-8. 故障域隔离。
-9. 独立部署、独立升级、独立回滚。
-10. 运行期不依赖固定启动顺序。
-11. 不因单一软件改变整体架构。
-12. 不为未来假设提前引入组件。
-13. 删除优先于叠加，简单优先于抽象。
-14. 可恢复优先于“一次运行成功”。
+5. 上层能力模块不得感知云厂商或 Linux 发行版。
+6. 宿主差异只能进入 `infra/host`。
+7. 配置、状态、数据、Secret 分离。
+8. 管理面、入站面、服务面、出站面、数据面分离。
+9. 最小暴露、最小权限、最小长期依赖。
+10. 故障域隔离。
+11. 独立部署、独立升级、独立回滚。
+12. 运行期不依赖固定启动顺序。
+13. 不因单一软件改变整体架构。
+14. 不为未来假设提前引入组件。
+15. 删除优先于叠加，简单优先于抽象。
+16. 可恢复优先于“一次运行成功”。
 
 ## 2. 一级能力域
 
@@ -34,7 +36,7 @@ public-edge/
 
 未经架构级决策，不新增、删除或改名。
 
-一级目录使用能力名，不使用具体软件名、临时状态或启动序号。
+一级目录使用能力名，不使用具体软件名、临时状态、云厂商名、发行版名或启动序号。
 
 禁止示例：
 
@@ -42,13 +44,69 @@ public-edge/
 mihomo/
 caddy/
 delta/
+oracle/
+ubuntu/
+home-server/
 1-proxy-hub/
 new/
 misc/
 final/
 ```
 
-## 3. 可插拔约束
+## 3. Host Contract
+
+Server Edge 不承诺“任意 Linux 必然可运行”，而是通过 `docs/HOST-CONTRACT.md` 定义可部署宿主必须具备的能力。
+
+宿主支持等级统一为：
+
+- `Verified`：完成 CI 或实机验证；
+- `Supported`：存在正式 Host Adapter；
+- `Compatible`：满足 Host Contract，但尚未完整验证；
+- `Unsupported`：缺少必要宿主能力。
+
+不得把 `Compatible` 宣称为 `Verified` 或 `Supported`。
+
+Oracle Cloud、AWS、Azure、Ubuntu、Debian、本地服务器、Mini PC 等均只是部署目标，不是架构身份。
+
+## 4. Host Adapter 边界
+
+`infra/host` 是唯一宿主适配入口。
+
+只有 `infra/host` 可以判断或适配：
+
+- Linux 发行版；
+- CPU 架构；
+- 包管理器；
+- 服务管理器；
+- 云端或本地环境；
+- 宿主级能力差异。
+
+`app-hub`、`proxy-hub`、`ai-gateway`、`ai-workers`、`public-edge` 禁止出现 Oracle、AWS、Ubuntu、Debian、apt、dnf、systemd 等宿主判断逻辑。
+
+如果目标 Linux 已经满足 Host Contract，安装器不得仅因为发行版未识别而拒绝部署；应进入 `Compatible` 路径并继续能力验证。
+
+## 5. Profile 治理
+
+Profile 只描述启用哪些能力模块，不描述部署环境。
+
+禁止：
+
+```text
+profiles/oracle.json
+profiles/aws.json
+profiles/ubuntu.json
+profiles/home-server.json
+```
+
+宿主环境由 `infra/host` 探测，模块组合由 Profile 决定，两者必须解耦。
+
+## 6. 运行时边界
+
+当前统一容器运行时为 Docker Engine + Compose。
+
+不得为了“未来兼容性”提前引入 Docker/Podman 双运行时、Kubernetes 或其他编排层。引入第二运行时必须作为独立架构变更评审。
+
+## 7. 可插拔约束
 
 `app-hub`、`proxy-hub`、`ai-gateway`、`ai-workers`、`public-edge` 必须支持独立启停、部署、升级、替换和删除。
 
@@ -67,14 +125,16 @@ final/
 - 依赖其他模块数据库 Schema；
 - 以固定启动顺序保证运行正确性。
 
-## 4. `infra` 初始化前置
+## 8. `infra` 初始化前置
 
 `infra` 是 Provisioning 前置，不是运行期中央编排器。
 
 首次安装、灾难恢复或全量重建时，`infra` 必须先完成：
 
+- Host detect/validate；
 - 目录树；
 - Owner/权限；
+- 容器运行时；
 - 跨模块网络；
 - 存储路径；
 - Secret 路径；
@@ -82,7 +142,7 @@ final/
 
 完成后，各业务模块必须能够独立恢复。
 
-## 5. 网络治理
+## 9. 网络治理
 
 所有跨模块 `edge_*` 网络由 `infra/network` 唯一声明和创建。
 
@@ -101,7 +161,7 @@ edge_egress_*
 edge_data_*
 ```
 
-## 6. 管理面
+## 10. 管理面
 
 Overlay Network 归 `infra/network/overlay` 管理。当前可以由 Tailscale 实现。
 
@@ -109,7 +169,7 @@ Overlay Network 归 `infra/network/overlay` 管理。当前可以由 Tailscale �
 
 业务组件不得成为管理面的唯一依赖。
 
-## 7. 公网暴露
+## 11. 公网暴露
 
 默认只有 `public-edge` 可以发布 80/443。
 
@@ -117,9 +177,9 @@ Overlay Network 归 `infra/network/overlay` 管理。当前可以由 Tailscale �
 
 数据库、缓存、Proxy Controller、Docker API、内部 Admin API 不得直接暴露公网。
 
-安全边界至少分为：Cloud NSG/Security List、Host Firewall、Docker Port Publishing、Docker Network、Application Auth。
+云主机可叠加 Cloud NSG/Security List；本地主机可叠加 Router/NAT/Host Firewall。无论环境如何，Docker Port Publishing、Docker Network 与 Application Auth 仍需独立治理。
 
-## 8. 出站治理
+## 12. 出站治理
 
 `proxy-hub` 是统一代理出口能力域。
 
@@ -127,7 +187,7 @@ Overlay Network 归 `infra/network/overlay` 管理。当前可以由 Tailscale �
 
 未经论证不引入第二代理核心、第二订阅体系或重复健康检查服务。
 
-## 9. AI Workers 安全边界
+## 13. AI Workers 安全边界
 
 `ai-workers` 默认视为高风险执行域。
 
@@ -146,7 +206,7 @@ ipc: host
 
 原则：Worker 可以执行任务，但不能拥有平台。
 
-## 10. Secret 治理
+## 14. Secret 治理
 
 Secret 不得进入 Git、README、普通配置、示例、日志或测试夹具。
 
@@ -156,28 +216,28 @@ Secret 不得进入 Git、README、普通配置、示例、日志或测试夹具
 
 优先使用本地受保护文件和 Compose secrets；不强制引入外部 Secret Manager。
 
-## 11. 配置与状态
+## 15. 配置与状态
 
 明确区分：
 
 ```text
-config   可版本化配置
-state    持久业务状态
-runtime  临时运行状态
-logs     日志
-workspace Worker 工作区
-secrets  敏感数据
+config     可版本化配置
+state      持久业务状态
+runtime    临时运行状态
+logs       日志
+workspace  Worker 工作区
+secrets    敏感数据
 ```
 
 运行时不得回写不可变 Release 配置目录。
 
-## 12. 共享大型资产
+## 16. 共享大型资产
 
 允许共享模型、索引、数据集等大型不可变资产，但必须：只读、版本化、可校验、不含 Secret、不含运行状态。
 
 共享资产不得成为跨模块共享业务数据库的借口。
 
-## 13. 日志治理
+## 17. 日志治理
 
 容器默认输出 stdout/stderr，由 `infra` 统一配置 Docker 日志驱动、轮转和磁盘上限。
 
@@ -187,7 +247,7 @@ secrets  敏感数据
 
 默认不为单节点引入重型日志平台。
 
-## 14. TLS 与内部 PKI
+## 18. TLS 与内部 PKI
 
 `public-edge` 负责公网 TLS，但不天然承担内部 CA 职责。
 
@@ -195,7 +255,7 @@ secrets  敏感数据
 
 同主机受控 Docker 网络默认不强制全链路 TLS；跨主机、不可信网络或明确高敏 RPC 应使用 TLS/mTLS。
 
-## 15. 资源与健康治理
+## 19. 资源与健康治理
 
 长期运行服务必须有合理资源边界。`ai-workers` 尤其必须限制 CPU、Memory 和 PID。
 
@@ -205,7 +265,7 @@ secrets  敏感数据
 
 Watchdog/Autoheal 不是默认组件。只有真实服务无法通过自身重试、healthcheck、restart policy 和资源限制可靠恢复时，才允许针对该服务增加最小自动恢复机制；不得为了通用 Autoheal 暴露 Docker Socket。
 
-## 16. Compose 治理
+## 20. Compose 治理
 
 禁止一个覆盖全部能力域的巨型 Compose。
 
@@ -213,17 +273,17 @@ Watchdog/Autoheal 不是默认组件。只有真实服务无法通过自身重�
 
 跨模块网络由 `infra` 提供，不通过中央 Compose 强行编排所有生命周期。
 
-## 17. 版本、安装与 Patch
+## 21. 版本、安装与 Patch
 
 生产安装必须锁定 Tag、Release 或 Commit SHA，不直接追随 `main` 或 `latest`。
 
-安装器只负责引导、校验和调用模块钩子，不允许演化为包含全部业务逻辑的巨型 Shell。
+安装器只负责引导、Host 检测、校验和调用模块钩子，不允许演化为包含全部业务逻辑的巨型 Shell。
 
 Patch 是正式能力，不等于 `git pull`。Patch 必须声明：来源版本、目标版本、影响模块、数据迁移、备份要求和回滚条件。
 
 部署前必须执行同一个权威验证器。禁止 Install、Patch、CI 分别实现三套互相漂移的校验逻辑。
 
-## 18. 数据与备份
+## 22. 数据与备份
 
 数据库不得直接暴露公网。
 
@@ -233,13 +293,15 @@ Patch 是正式能力，不等于 `git pull`。Patch 必须声明：来源版本
 
 不能恢复的备份不算备份。
 
-## 19. 脚本与单一事实来源
+## 23. 脚本与单一事实来源
 
 脚本用于胶合、校验、安装、Patch、回滚、备份和恢复，不重复实现成熟组件已有能力。
 
 同一规则只能存在一个权威实现。文档可以解释规则，但不能成为第二套执行逻辑。
 
-## 20. 新组件准入
+Host Contract 的机器可读规则统一来自 `manifests/host-contract.json`；文档负责解释，不复制第二套执行规则。
+
+## 24. 新组件准入
 
 新常驻组件必须证明至少一项：必要能力缺失、显著提高稳定性/安全性、显著降低复杂度/资源消耗、或替换现有组件。
 
@@ -247,26 +309,31 @@ Patch 是正式能力，不等于 `git pull`。Patch 必须声明：来源版本
 
 默认选择是不新增。
 
-## 21. 架构级变更
+## 25. 架构级变更
 
 下列变更必须单独评审，不得作为普通修复顺带实施：
 
 - 一级能力域增删改名或职责变化；
+- Host Contract 基础能力模型变化；
 - 管理面、公网入口或统一出站模型改变；
-- 新增代理核心；
+- 新增容器运行时或代理核心；
 - 引入 Kubernetes、Service Mesh 等平台级依赖；
 - 打破可插拔原则；
 - 大规模改变数据和权限模型。
 
-## 22. AI 修改约束
+## 26. AI 修改约束
 
 AI 修改仓库时必须先识别所属能力域，不扩大端口、不扩大权限、不新增无关组件、不顺手重构、不改无关模块、不重复已有规则。
 
+AI 不得在业务模块中加入云厂商或发行版判断；相关逻辑必须进入 `infra/host`。
+
 原则：修复只修复，精简只精简，升级只升级。
 
-## 23. 最终约束
+## 27. 最终约束
 
 > 能力名稳定，具体实现可换。
+>
+> 宿主能力有契约，宿主品牌不进入架构。
 >
 > 模块可以插拔，契约必须稳定。
 >
