@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "networks": [
+    {"name": "edge_ingress_app", "driver": "bridge", "internal": true},
+    {"name": "edge_ingress_ai", "driver": "bridge", "internal": true},
+    {"name": "edge_ingress_workers", "driver": "bridge", "internal": true},
+    {"name": "edge_service_ai_app", "driver": "bridge", "internal": true},
+    {"name": "edge_service_ai_workers", "driver": "bridge", "internal": true},
+    {"name": "edge_egress_ai", "driver": "bridge", "internal": true},
+    {"name": "edge_egress_workers", "driver": "bridge", "internal": true}
+  ]
+}

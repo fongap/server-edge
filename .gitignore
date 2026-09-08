@@ -1,0 +1,14 @@
+# Local/runtime data
+.env
+*.local
+secrets/
+state/
+runtime/
+backups/
+releases/
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

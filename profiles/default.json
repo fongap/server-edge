@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "modules": {
+    "infra": true,
+    "app-hub": true,
+    "proxy-hub": true,
+    "ai-gateway": true,
+    "ai-workers": true,
+    "public-edge": true
+  }
+}

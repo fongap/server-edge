@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "modules"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "required", "pluggable"],
+        "properties": {
+          "name": {"type": "string"},
+          "required": {"type": "boolean"},
+          "pluggable": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

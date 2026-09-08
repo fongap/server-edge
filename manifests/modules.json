@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {"name": "infra", "required": true, "pluggable": false},
+    {"name": "app-hub", "required": false, "pluggable": true},
+    {"name": "proxy-hub", "required": false, "pluggable": true},
+    {"name": "ai-gateway", "required": false, "pluggable": true},
+    {"name": "ai-workers", "required": false, "pluggable": true},
+    {"name": "public-edge", "required": false, "pluggable": true}
+  ]
+}
