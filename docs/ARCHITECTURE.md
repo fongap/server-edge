@@ -2,39 +2,11 @@
 
 ## 1. 定位
 
-Server Edge 是面向云主机与本地 Linux 主机的统一边缘服务平台。它采用模块化、可插拔和最小依赖设计，上层能力模块与宿主环境解耦，宿主差异统一由 `infra/host` 处理。
+Server Edge 是面向云主机与本地 Linux 主机的统一边缘服务平台。目标是长期、稳定、安全、可恢复、可替换、可迁移。
 
-目标：长期、稳定、高效、安全、可恢复、可替换、可迁移。
+Server Edge 不把 Oracle、AWS、Ubuntu、Debian 或本地服务器作为架构身份；它们只是部署目标。宿主差异统一由 `infra/host` 处理。
 
-Server Edge 不把 Oracle、AWS、Ubuntu、Debian、Home Server 或某一类硬件作为架构身份。这些都只是部署目标。
-
-## 2. 宿主抽象
-
-Server Edge 通过 Host Contract 约束宿主能力：
-
-```text
-Server Edge
-    │
-    ├── Host Contract
-    │      ↓
-    │   Compatible Linux Host
-    │   ├── Cloud VM
-    │   └── Local Host
-    │
-    └── Capability Domains
-           ├── infra
-           ├── app-hub
-           ├── proxy-hub
-           ├── ai-gateway
-           ├── ai-workers
-           └── public-edge
-```
-
-宿主只需要满足 `docs/HOST-CONTRACT.md` 定义的能力。发行版、云厂商、包管理器、服务管理器和底层网络差异不得泄漏到业务模块。
-
-`infra/host` 是唯一宿主适配入口。
-
-## 3. 固定一级能力域
+## 2. 固定能力域
 
 ```text
 server-edge/
@@ -46,229 +18,168 @@ server-edge/
 └── public-edge/
 ```
 
-| 能力域 | 长期职责 | 当前实现可替换 |
-| --- | --- | --- |
-| `infra` | Host Adapter、主机初始化、网络、管理面、存储、安全、备份 | 是 |
-| `app-hub` | 通用应用承载 | 是 |
-| `proxy-hub` | 代理聚合、订阅分发、健康检查、可选出站策略 | 是 |
-| `ai-gateway` | AI API、模型、Provider、Key 与请求调度 | 是 |
-| `ai-workers` | 云端或本地 AI Worker / Agent 执行与工具调用 | 是 |
-| `public-edge` | 公网入口、域名、TLS、反向代理 | 是 |
+| 能力域 | 长期职责 |
+| --- | --- |
+| `infra` | Host Adapter、Runtime、网络、管理面、存储、安全、备份 |
+| `app-hub` | 通用应用承载 |
+| `proxy-hub` | 节点聚合、订阅分发、健康检查、可选显式出口 |
+| `ai-gateway` | AI API、模型、Provider、Key 与请求调度 |
+| `ai-workers` | AI Worker / Agent 执行与工具调用 |
+| `public-edge` | 公网入口、域名、TLS、反向代理 |
 
-`infra` 是基础设施域，其余五个均是可插拔能力模块。
+能力名稳定，具体软件实现可替换。
 
-## 4. `infra` 内部边界
-
-推荐语义结构：
+## 3. Host Contract
 
 ```text
-infra/
-├── host/          # Host Contract 检测与适配
-├── runtime/       # 容器运行时
-├── network/
-│   ├── container/
-│   └── overlay/
-├── security/
-└── storage/
+Server Edge
+    │
+    ├── Host Contract
+    │      └── Compatible Linux Host
+    │          ├── Cloud VM
+    │          └── Local Host
+    │
+    └── Capability Domains
 ```
 
-当前统一运行时仍为 Docker Engine + Compose。是否引入其他容器运行时属于后续独立架构决策，不在当前 Host 抽象中解决。
+`infra/host` 是唯一宿主适配入口。上层模块不得判断云厂商、Linux 发行版、包管理器或服务管理器。
 
-Overlay Network 仍属于：
+支持等级统一为 `Verified / Supported / Compatible / Unsupported`。
 
-```text
-infra/network/overlay/
-```
+## 4. Profile
 
-当前可由 Tailscale 实现，但架构只依赖“私有覆盖网络/管理面”能力。
-
-## 5. Host Contract
-
-Host Contract 关注能力，不绑定发行版名称。至少描述：
-
-```text
-Linux
-├── architecture
-├── privilege
-├── package manager
-├── service manager
-├── container runtime capability
-├── filesystem capability
-├── network capability
-└── optional overlay capability
-```
-
-典型检测结果可以是：
-
-```text
-os=linux
-arch=arm64
-package_manager=apt
-service_manager=systemd
-container_runtime=docker
-environment=cloud
-```
-
-也可以是：
-
-```text
-os=linux
-arch=amd64
-package_manager=apt
-service_manager=systemd
-container_runtime=docker
-environment=local
-```
-
-对 `app-hub`、`proxy-hub`、`ai-gateway`、`ai-workers`、`public-edge` 来说，两者没有架构差异。
-
-## 6. 支持等级
-
-部署目标分为：
-
-- `Verified`：完成 CI 或实机验证；
-- `Supported`：存在正式 Host Adapter；
-- `Compatible`：满足 Host Contract，但尚未完成完整验证；
-- `Unsupported`：缺少必要宿主能力。
-
-不得把“理论可运行”直接宣传为“正式支持”。
-
-## 7. 环境与 Profile
-
-Cloud 与 Local 不拆分为不同产品，也不拆成不同架构。
+Profile 只描述启用哪些能力模块，不描述部署环境。
 
 禁止：
 
 ```text
 profiles/oracle.json
 profiles/aws.json
+profiles/ubuntu.json
 profiles/home-server.json
 ```
 
-Profile 只描述启用哪些能力模块。宿主环境由 `infra/host` 探测。
+## 5. 平台配置模型
 
-环境差异只用于能力判断，例如：
-
-```text
-public_ip=yes|no
-private_ip=yes|no
-nat=yes|no
-ipv6=yes|no
-overlay=available|unavailable
-```
-
-如果本地主机没有公网能力，可以关闭 `public-edge`，其他模块仍应正常运行。
-
-## 8. 逻辑数据流
+Server Edge 的能力结构固定，部署参数外置。域名、端口、绑定、开关、资源、健康检查等不得散落为跨模块硬编码。
 
 ```text
-                         Internet
-                            │
-                       public-edge
-                            │
-                ┌───────────┼───────────┐
-                │           │           │
-             app-hub    ai-gateway   ai-workers
-                            ▲           │
-                            └───────────┘
-                                AI API
+Release defaults
+      │ 首次初始化
+      ▼
+/opt/server-edge/config/
+      │
+      ├── <module>.env          模块实例参数
+      └── publications.json     平台公网发布策略
+
+/opt/server-edge/secrets/       Secret
+/opt/server-edge/runtime/contracts/  跨模块运行契约
 ```
 
-需要代理的显式出站：
+规则：
+
+- 模块默认值位于 `<module>/config/defaults.env`；
+- 实例配置位于 `/opt/server-edge/config/<module>.env`；
+- 实例配置创建后跨 Release 保留，升级不得覆盖；
+- 模块只能读取自己的实例配置；
+- Secret 与普通配置分离；
+- 跨模块参数通过运行契约传递，不读取对方 `.env`；
+- 机器规则见 `manifests/configuration.json`。
+
+详细说明见 `docs/CONFIGURATION.md`。
+
+## 6. 域名与 Public Edge
+
+域名属于 Server Edge 的平台发布策略，不属于某个业务模块内部实现。
+
+统一配置：
 
 ```text
-app-hub / ai-gateway / ai-workers
-                │
-                ▼
-            proxy-hub:7890
-                │
-                ├── LOCAL
-                └── Provider / AUTO / FALLBACK
-                        │
-                        ▼
-                     Internet
+/opt/server-edge/config/publications.json
 ```
 
-Proxy Hub 的统一出口是可选能力；`egress=off` 时不提供 `7890` 出站服务，但订阅聚合与分发仍可独立运行。
+示例：
 
-本机节点与统一出口分离：
+```json
+{
+  "schema_version": 1,
+  "services": {
+    "proxy-subscription": {"origin": "https://sub.example.com"},
+    "ai-gateway": {"origin": "https://api.example.com"},
+    "app-main": {"origin": "https://app.example.com"}
+  }
+}
+```
+
+业务模块只声明稳定 `publication_key` 和内部服务端点；`public-edge` 统一负责 80/443、域名、TLS 和反向代理。
+
+因此：
 
 ```text
-Tailnet Client
-     │
-     ▼
-<overlay-ip>:7891
-     │
-     ▼
-LOCAL direct
-     │
-     ▼
-Current Host Internet Egress
+业务模块服务契约 + publications.json
+                 │
+                 ▼
+             public-edge
+                 │
+                 ▼
+          Domain / HTTPS
 ```
 
-`7891` 只在 `local/hybrid` 模式存在，并固定使用当前宿主自身公网出口，不受统一 `PROXY` 组选择影响。
+更换域名不得要求修改业务模块代码。
 
-订阅分发：
+## 7. 跨模块运行契约
+
+运行期发现信息位于：
 
 ```text
-Provider Secret URLs
-        │
-        ▼
-      Mihomo
-        │  cache
-        ▼
-Proxy Hub Feed
-        │
-        ├── Tailnet: <overlay-ip>:8780
-        │
-        └── edge_service_proxy_public
-                    │
-                    ▼
-                public-edge
-                    │
-                    ▼
-        optional https://sub.example.com
+/opt/server-edge/runtime/contracts/
 ```
 
-Provider 原始 URL 不进入客户端订阅。Feed 使用 Token 化路径；Public Edge 只负责可选公网域名/TLS，不读取 Proxy Hub Secret。
+契约必须最小、机器可读、无 Secret。
 
-管理面与业务面分离：
+例如 Proxy Hub 的统一出口端口可配置，因此 `ai-gateway`、`ai-workers`、`app-hub` 不得硬编码 `proxy-hub:7890`，而应消费 `proxy-egress` 运行契约。
 
-```text
-Operator
-   │
-Overlay Network
-   │
-infra/network/overlay
-   │
-SSH / Admin / Recovery
-```
+同理，Public Edge 不读取 Proxy Hub 配置或状态，只消费 `proxy-subscription` 服务契约和平台发布注册表。
 
-## 9. 网络平面
+## 8. 网络平面
 
-逻辑上至少区分：
+逻辑上区分：
 
-- Management：SSH、私有管理、节点互联、故障恢复；
-- Ingress：Public Edge 到目标能力域；
-- Service：明确的跨模块 API/Feed 调用；
+- Management：SSH、私有管理、节点互联、恢复；
+- Ingress：Public Edge 到目标能力；
+- Service：明确跨模块 API/Feed；
 - Egress：需要代理的服务到 Proxy Hub；
-- Data：数据库、缓存和持久化服务。
+- Data：数据库、缓存、持久化服务。
 
-一个逻辑平面可以对应多个 Docker Network。不得把“同一平面”误解为“所有服务共用同一 bridge”。
+所有跨模块 `edge_*` 网络由 `infra/network` 唯一声明和创建，模块只能 `external: true` 引用。
 
-跨 Compose 的 `edge_*` 网络由 `infra/network` 唯一声明、创建和维护；业务模块只能按 `external: true` 引用。
+一个逻辑平面可以对应多个 Docker Network，不允许所有服务共用一个大 bridge。
 
-Proxy Hub 与 Public Edge 的订阅发布只通过：
+## 9. Proxy Hub 数据流
+
+节点聚合是 Proxy Hub 核心能力，Provider 至少一个。LOCAL 只是可选附加节点。
 
 ```text
-edge_service_proxy_public
+Provider A ─┐
+Provider B ─┼──→ AUTO / FALLBACK / PROXY
+LOCAL ──────┘          │
+                       ├── Subscription Feed
+                       └── optional Unified Egress
 ```
 
-内部服务名为 `proxy-feed:8080`。Public Edge 不得直接读取 Proxy Hub 的 `state/`、`secrets/` 或内部目录。
+订阅、LOCAL 节点、统一出口、域名、端口和绑定方式彼此独立配置。
 
-## 10. 初始化与运行
+Proxy Hub 对其他模块发布统一出口时，通过 `proxy-egress` 运行契约公布实际服务端点；消费者不依赖固定端口。
 
-首次初始化、灾难恢复和全量重建存在明确前置关系：
+订阅 Feed 通过 `proxy-subscription` 服务契约声明内部端点，通过 `publications.json` 可选绑定公网域名。
+
+## 10. 管理面
+
+Overlay Network 归 `infra/network/overlay` 管理，当前实现可为 Tailscale。
+
+用途：SSH、节点互联、私有后台、运维、恢复。业务模块不得成为管理面的唯一依赖。
+
+## 11. 初始化与运行
 
 ```text
 host detect
@@ -277,24 +188,22 @@ host validate
     ↓
 infra bootstrap
     ↓
-目录 / 权限 / Runtime / 网络 / 存储 / Secret 路径
+目录 / 权限 / Runtime / 网络 / 配置 / Secret 路径
     ↓
 可插拔业务模块部署
 ```
 
-这属于 Provisioning Dependency，不属于 Runtime Dependency。
+这是 Provisioning Dependency，不是 Runtime 启动顺序。运行期模块必须通过健康检查、有限重试和故障降级恢复依赖。
 
-运行期各业务模块不得依赖固定启动顺序，必须通过超时、有限重试、健康检查和故障降级恢复依赖。
-
-## 11. 宿主运行布局
-
-仓库代码与运行状态分离：
+## 12. 宿主布局
 
 ```text
 /opt/server-edge/
 ├── current -> releases/<release-id>
 ├── releases/
 ├── config/
+│   ├── publications.json
+│   └── <module>.env
 ├── state/
 ├── secrets/
 ├── runtime/
@@ -304,26 +213,13 @@ infra bootstrap
     └── assets/
 ```
 
-- `releases/`：不可变代码与配置模板；
-- `config/`：用户可持久修改的非敏感配置；
-- `state/`：模块持久状态与可再生成缓存；
-- `secrets/`：本地敏感数据；
-- `runtime/`：安装器、运行时元数据与显式跨模块运行契约；
-- `backups/`：一致性备份产物；
-- `shared/assets/`：可选的版本化、校验、只读大型资产。
-
-跨模块运行契约可以位于 `runtime/contracts/`，但必须是最小、机器可读、非 Secret 的接口描述；不得借此暴露另一模块内部文件布局。
-
-## 12. 共享大型资产
-
-允许不同模块共享大型不可变资产，但必须满足：
-
-- 只读挂载；
-- 有版本和校验值；
-- 不包含 Secret；
-- 不包含模块运行状态；
-- 可重新获取或重新生成；
-- 不以直接共享另一模块 `data/` 的方式实现。
+- `releases/`：不可变代码、模板；
+- `config/`：持久非敏感实例配置；
+- `state/`：持久业务状态与缓存；
+- `secrets/`：敏感数据；
+- `runtime/contracts/`：跨模块运行发现；
+- `backups/`：备份；
+- `shared/assets/`：可选只读共享资产。
 
 ## 13. 实现边界
 
@@ -337,6 +233,4 @@ public-edge  -> Caddy
 ai-workers   -> Delta / 其他 AI Worker 平台
 ```
 
-这些具体实现不得升级为一级架构名。替换具体实现不应要求重构一级目录或整体网络模型。
-
-完整 Sub-Store 不是 M2 默认依赖。只有出现多格式转换、复杂规则编排、可视化订阅管理等明确需求时，才允许作为 Proxy Hub 内部实现扩展重新评估。
+具体实现不得升级为一级架构名。替换具体实现不应要求重构一级目录、配置模型或整体网络模型。
