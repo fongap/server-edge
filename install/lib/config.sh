@@ -6,6 +6,7 @@ ensure_platform_config() {
   local config_root="$root/config"
   local publications="$config_root/publications.json"
   local default_publications="$release_dir/config/publications.default.json"
+  local key origin
 
   mkdir -p "$config_root"
   chown root:root "$config_root"
@@ -19,8 +20,16 @@ ensure_platform_config() {
 
   [[ ! -L "$publications" ]] || die "platform publications config must not be a symlink: $publications"
   [[ "$(stat -c '%U' "$publications")" == root ]] || die "platform publications config must be owned by root: $publications"
-  jq -e '.schema_version == 1 and (.services | type == "object")' "$publications" >/dev/null \
+  jq -e '.schema_version == 1 and (.services | type == "object") and all(.services[]; type == "object")' "$publications" >/dev/null \
     || die "invalid platform publications config: $publications"
+
+  while IFS= read -r key; do
+    [[ "$key" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]] || die "invalid publication service id: $key"
+    origin="$(jq -r --arg id "$key" '.services[$id].origin // empty' "$publications")"
+    [[ -n "$origin" ]] || continue
+    [[ "$origin" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
+      || die "publication $key origin must be canonical HTTPS without path or port"
+  done < <(jq -r '.services | keys[]' "$publications")
 }
 
 ensure_module_config() {
