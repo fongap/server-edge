@@ -9,6 +9,10 @@
     "busybox": {
       "version": "1.37.0",
       "image": "busybox:1.37.0"
+    },
+    "caddy": {
+      "version": "2.11.4",
+      "image": "caddy:2.11.4-alpine"
     }
   }
 }
