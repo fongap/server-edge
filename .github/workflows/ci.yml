@@ -20,3 +20,15 @@ jobs:
 
       - name: Validate repository
         run: bash install/validate.sh --static
+
+      - name: Validate release script permissions
+        run: |
+          tmp="$(mktemp -d)"
+          cp -a . "$tmp/release"
+          find "$tmp/release" -type f -name '*.sh' -exec chmod 0644 {} +
+          source "$tmp/release/install/lib/common.sh"
+          ensure_release_script_modes "$tmp/release"
+          if find "$tmp/release" -type f -name '*.sh' ! -perm -u+x | grep -q .; then
+            echo 'ERROR: release contains non-executable shell scripts' >&2
+            exit 1
+          fi
