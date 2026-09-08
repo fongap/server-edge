@@ -3,20 +3,15 @@ set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
+source "$RELEASE_DIR/install/lib/config.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
-defaults_file="$RELEASE_DIR/proxy-hub/config/defaults.env"
+ensure_platform_config "$RELEASE_DIR" "$root"
+ensure_module_config "$RELEASE_DIR" "$root" proxy-hub
 settings_file="$root/config/proxy-hub.env"
-[[ -s "$defaults_file" ]] || die "missing Proxy Hub defaults: $defaults_file"
+[[ -s "$settings_file" ]] || die "missing Proxy Hub instance config: $settings_file"
 # shellcheck disable=SC1090
-source "$defaults_file"
-
-if [[ -e "$settings_file" ]]; then
-  [[ ! -L "$settings_file" ]] || die "proxy settings file must not be a symlink: $settings_file"
-  [[ "$(stat -c '%U' "$settings_file")" == root ]] || die "proxy settings file must be owned by root: $settings_file"
-  # shellcheck disable=SC1090
-  source "$settings_file"
-fi
+source "$settings_file"
 
 validate_bool() {
   local name="$1" value="${!1:-}"
@@ -61,12 +56,6 @@ case "$SERVER_EDGE_PROXY_EGRESS_POLICY" in
   auto|fallback|select) ;;
   *) die "SERVER_EDGE_PROXY_EGRESS_POLICY must be auto, fallback, or select" ;;
 esac
-
-origin="$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN"
-if [[ "$origin" != auto ]]; then
-  [[ "$origin" =~ ^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
-    || die "SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN must be auto or an HTTPS origin without path or port"
-fi
 [[ "$SERVER_EDGE_PROXY_HEALTH_URL" == https://* ]] || die "SERVER_EDGE_PROXY_HEALTH_URL must use HTTPS"
 
 export SERVER_EDGE_PROXY_SETTINGS_FILE="$settings_file"
