@@ -6,10 +6,14 @@ source "$RELEASE_DIR/install/lib/common.sh"
 source "$RELEASE_DIR/install/lib/config.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
+defaults_file="$RELEASE_DIR/proxy-hub/config/defaults.env"
 ensure_platform_config "$RELEASE_DIR" "$root"
 ensure_module_config "$RELEASE_DIR" "$root" proxy-hub
 settings_file="$root/config/proxy-hub.env"
+[[ -s "$defaults_file" ]] || die "missing Proxy Hub defaults: $defaults_file"
 [[ -s "$settings_file" ]] || die "missing Proxy Hub instance config: $settings_file"
+# shellcheck disable=SC1090
+source "$defaults_file"
 # shellcheck disable=SC1090
 source "$settings_file"
 
@@ -33,13 +37,11 @@ validate_uint() {
 for name in SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH SERVER_EDGE_PROXY_EGRESS_ENABLED; do
   validate_bool "$name"
 done
-[[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true || "$SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH" == false ]] \
-  || die "LOCAL node cannot be published when SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false"
+[[ "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED" == true || "$SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH" == false ]] || die "LOCAL node cannot be published when SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false"
 
 advertise_host="$SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST"
 if [[ "$advertise_host" != auto ]]; then
-  [[ "$advertise_host" =~ ^[A-Za-z0-9][A-Za-z0-9.:-]*$ ]] \
-    || die "SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST must be auto or a host/IP without scheme or path"
+  [[ "$advertise_host" =~ ^[A-Za-z0-9][A-Za-z0-9.:-]*$ ]] || die "SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST must be auto or a host/IP without scheme or path"
 fi
 
 for name in SERVER_EDGE_PROXY_FEED_BIND SERVER_EDGE_PROXY_CONTROLLER_BIND SERVER_EDGE_PROXY_LOCAL_NODE_BIND SERVER_EDGE_PROXY_EGRESS_BIND; do
