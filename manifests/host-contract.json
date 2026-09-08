@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "host_contract": {
+    "os": {
+      "required": true,
+      "allowed": ["linux"]
+    },
+    "architectures": {
+      "verified_priority": ["amd64", "arm64"],
+      "compatible_if_dependencies_available": true
+    },
+    "privilege": {
+      "install_requires_root_or_sudo": true
+    },
+    "commands": {
+      "required": ["bash", "curl", "tar", "jq"]
+    },
+    "runtime": {
+      "engine": "docker",
+      "compose": "v2",
+      "required": true
+    },
+    "filesystem": {
+      "root": "/opt/server-edge",
+      "requires_symlink": true,
+      "requires_posix_permissions": true
+    },
+    "network": {
+      "requires_dns": true,
+      "requires_outbound_https": true,
+      "requires_docker_bridge": true,
+      "public_ip_required": false
+    },
+    "overlay": {
+      "required": false,
+      "current_implementation": "tailscale"
+    },
+    "environment": {
+      "allowed": ["cloud", "local", "unknown"]
+    },
+    "support_levels": ["verified", "supported", "compatible", "unsupported"]
+  }
+}
