@@ -5,26 +5,17 @@ RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
-config_dir="$root/config"
-settings_file="$config_dir/proxy-hub.env"
+settings_file="$root/config/proxy-hub.env"
 
-mkdir -p "$config_dir"
-chown root:root "$config_dir"
-chmod 755 "$config_dir"
-
-if [[ ! -e "$settings_file" ]]; then
-  cat > "$settings_file" <<'EOF_SETTINGS'
-SERVER_EDGE_PROXY_EGRESS=local
-SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=auto
-EOF_SETTINGS
-  chown root:root "$settings_file"
-  chmod 644 "$settings_file"
+if [[ -e "$settings_file" ]]; then
+  [[ ! -L "$settings_file" ]] || die "proxy settings file must not be a symlink: $settings_file"
+  [[ "$(stat -c '%U' "$settings_file")" == root ]] || die "proxy settings file must be owned by root: $settings_file"
+  # shellcheck disable=SC1090
+  source "$settings_file"
+else
+  SERVER_EDGE_PROXY_EGRESS=local
+  SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=auto
 fi
-
-[[ ! -L "$settings_file" ]] || die "proxy settings file must not be a symlink: $settings_file"
-[[ "$(stat -c '%U' "$settings_file")" == root ]] || die "proxy settings file must be owned by root: $settings_file"
-# shellcheck disable=SC1090
-source "$settings_file"
 
 case "${SERVER_EDGE_PROXY_EGRESS:-}" in
   off|local|provider|hybrid) ;;
