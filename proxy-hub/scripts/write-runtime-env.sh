@@ -14,20 +14,34 @@ feed_image="$(jq -r '.components.busybox.image // empty' "$RELEASE_DIR/manifests
 [[ -n "$image" ]] || die "Mihomo image is missing from manifests/versions.json"
 [[ -n "$feed_image" ]] || die "subscription feed image is missing from manifests/versions.json"
 
-bind_ip=127.0.0.1
-if command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1; then
-  candidate="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
-  [[ -n "$candidate" ]] && bind_ip="$candidate"
-fi
+resolve_bind_ip() {
+  local mode="$1"
+  case "$mode" in
+    loopback) printf '%s\n' '127.0.0.1' ;;
+    tailnet)
+      command -v tailscale >/dev/null 2>&1 || die "Tailnet bind requested but tailscale is unavailable"
+      tailscale status >/dev/null 2>&1 || die "Tailnet bind requested but Tailscale is not connected"
+      local ip
+      ip="$(tailscale ip -4 2>/dev/null | head -n1 || true)"
+      [[ -n "$ip" ]] || die "Tailnet bind requested but no Tailscale IPv4 is available"
+      printf '%s\n' "$ip"
+      ;;
+  esac
+}
+
+feed_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_FEED_BIND")"
+controller_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_CONTROLLER_BIND")"
+node_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_LOCAL_NODE_BIND")"
+egress_bind_ip="$(resolve_bind_ip "$SERVER_EDGE_PROXY_EGRESS_BIND")"
 
 feed_token_file="$root/secrets/proxy-hub/subscription-token"
 [[ -s "$feed_token_file" ]] || die "missing subscription token"
 feed_token="$(tr -d '\r\n' < "$feed_token_file")"
 [[ "$feed_token" =~ ^[A-Fa-f0-9]{48}$ ]] || die "subscription token must be 48 hexadecimal characters"
 
-subscription_base="$SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL"
-if [[ "$subscription_base" == auto ]]; then
-  subscription_base="http://$bind_ip:8780"
+subscription_origin="$SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN"
+if [[ "$subscription_origin" == auto ]]; then
+  subscription_origin="http://$feed_bind_ip:$SERVER_EDGE_PROXY_FEED_PORT"
 fi
 
 mkdir -p "$runtime_dir"
@@ -38,13 +52,26 @@ SERVER_EDGE_PROXY_CONFIG=$runtime_dir/config.yaml
 SERVER_EDGE_PROXY_STATE=$root/state/proxy-hub
 SERVER_EDGE_PROXY_FEED_ROOT=$root/state/proxy-hub/feed
 SERVER_EDGE_PROXY_FEED_TOKEN=$feed_token
-SERVER_EDGE_PROXY_FEED_BIND_IP=$bind_ip
-SERVER_EDGE_PROXY_CONTROLLER_BIND_IP=$bind_ip
-SERVER_EDGE_PROXY_NODE_BIND_IP=$bind_ip
-SERVER_EDGE_PROXY_NODE_HOST=$bind_ip
-SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=$subscription_base
-SERVER_EDGE_PROXY_EGRESS=$SERVER_EDGE_PROXY_EGRESS
+SERVER_EDGE_PROXY_FEED_BIND_IP=$feed_bind_ip
+SERVER_EDGE_PROXY_CONTROLLER_BIND_IP=$controller_bind_ip
+SERVER_EDGE_PROXY_NODE_BIND_IP=$node_bind_ip
+SERVER_EDGE_PROXY_EGRESS_BIND_IP=$egress_bind_ip
+SERVER_EDGE_PROXY_NODE_HOST=$node_bind_ip
+SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=$subscription_origin
+SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED
+SERVER_EDGE_PROXY_EGRESS_ENABLED=$SERVER_EDGE_PROXY_EGRESS_ENABLED
+SERVER_EDGE_PROXY_EGRESS_POLICY=$SERVER_EDGE_PROXY_EGRESS_POLICY
+SERVER_EDGE_PROXY_EGRESS_PORT=$SERVER_EDGE_PROXY_EGRESS_PORT
+SERVER_EDGE_PROXY_LOCAL_NODE_PORT=$SERVER_EDGE_PROXY_LOCAL_NODE_PORT
+SERVER_EDGE_PROXY_FEED_PORT=$SERVER_EDGE_PROXY_FEED_PORT
+SERVER_EDGE_PROXY_CONTROLLER_PORT=$SERVER_EDGE_PROXY_CONTROLLER_PORT
+SERVER_EDGE_PROXY_PROVIDER_INTERVAL=$SERVER_EDGE_PROXY_PROVIDER_INTERVAL
+SERVER_EDGE_PROXY_HEALTH_URL=$SERVER_EDGE_PROXY_HEALTH_URL
+SERVER_EDGE_PROXY_HEALTH_INTERVAL=$SERVER_EDGE_PROXY_HEALTH_INTERVAL
+SERVER_EDGE_PROXY_PROBE_INTERVAL=$SERVER_EDGE_PROXY_PROBE_INTERVAL
+SERVER_EDGE_PROXY_HEALTH_TIMEOUT=$SERVER_EDGE_PROXY_HEALTH_TIMEOUT
+SERVER_EDGE_PROXY_AUTO_TOLERANCE=$SERVER_EDGE_PROXY_AUTO_TOLERANCE
 EOF_ENV
 chown root:root "$env_file"
 chmod 600 "$env_file"
-log "proxy runtime env written: egress=$SERVER_EDGE_PROXY_EGRESS bind=$bind_ip"
+log "proxy runtime env written: providers=required local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
