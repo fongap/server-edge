@@ -5,7 +5,8 @@ RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
-SERVER_EDGE_ROOT="$root" source "$HERE/load-settings.sh"
+export SERVER_EDGE_ROOT="$root"
+source "$HERE/load-settings.sh"
 provider_dir="$root/secrets/proxy-hub/providers"
 
 [[ -d "$provider_dir" ]] || die "proxy provider directory is missing: $provider_dir"
