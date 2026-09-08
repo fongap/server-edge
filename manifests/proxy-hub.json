@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "capability": "proxy-hub",
+  "aggregation": {
+    "required": true,
+    "provider_minimum": 1,
+    "groups": ["AUTO", "FALLBACK", "PROXY"]
+  },
+  "local_node": {
+    "optional": true,
+    "publish_independent": true,
+    "advertise_host_independent": true
+  },
+  "egress": {
+    "optional": true,
+    "independent_from_aggregation": true,
+    "policies": ["auto", "fallback", "select"]
+  },
+  "subscription": {
+    "required": true,
+    "tokenized": true,
+    "origin_optional": true,
+    "origin_independent_from_node_address": true,
+    "public_ingress_owner": "public-edge"
+  },
+  "configuration": {
+    "defaults": "proxy-hub/config/defaults.env",
+    "runtime": "/opt/server-edge/config/proxy-hub.env",
+    "preserve_on_upgrade": true
+  }
+}
