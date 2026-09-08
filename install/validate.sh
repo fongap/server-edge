@@ -31,6 +31,9 @@ jq -e '.schema_version == 1' "$ROOT_DIR/profiles/default.json" >/dev/null \
 jq -e '.schema_version == 1 and (.server_edge | type == "string") and (.components.mihomo.version | type == "string") and (.components.mihomo.image | type == "string") and (.components.busybox.version | type == "string") and (.components.busybox.image | type == "string")' \
   "$ROOT_DIR/manifests/versions.json" >/dev/null \
   || die "invalid manifests/versions.json"
+jq -e '.schema_version == 1 and .contract == "proxy-subscription" and .producer == "proxy-hub" and .consumer == "public-edge" and .network == "edge_service_proxy_public" and .upstream == "http://proxy-feed:8080" and .public_origin.optional == true and .public_origin.scheme == "https" and .secret_fields == []' \
+  "$ROOT_DIR/manifests/contracts/proxy-subscription.json" >/dev/null \
+  || die "invalid proxy subscription contract"
 
 repo_version="$(tr -d '\r\n' < "$ROOT_DIR/VERSION")"
 manifest_version="$(jq -r '.server_edge' "$ROOT_DIR/manifests/versions.json")"
@@ -48,6 +51,7 @@ for file in \
   docs/ARCHITECTURE.md \
   docs/GOVERNANCE.md \
   docs/HOST-CONTRACT.md \
+  manifests/contracts/proxy-subscription.json \
   proxy-hub/compose.yaml \
   proxy-hub/compose.egress.yaml \
   proxy-hub/compose.local-node.yaml \
