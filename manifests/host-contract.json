@@ -12,8 +12,11 @@
     "privilege": {
       "install_requires_root_or_sudo": true
     },
+    "bootstrap": {
+      "required_commands": ["curl", "tar"]
+    },
     "commands": {
-      "required": ["bash", "curl", "tar", "jq"]
+      "required_after_bootstrap": ["bash", "curl", "tar", "jq"]
     },
     "runtime": {
       "engine": "docker",
@@ -21,7 +24,8 @@
       "required": true
     },
     "filesystem": {
-      "root": "/opt/server-edge",
+      "default_root": "/opt/server-edge",
+      "root_overridable": true,
       "requires_symlink": true,
       "requires_posix_permissions": true
     },
@@ -33,7 +37,13 @@
     },
     "overlay": {
       "required": false,
-      "current_implementation": "tailscale"
+      "current_implementation": "tailscale",
+      "modes": ["auto", "off", "required"]
+    },
+    "adapters": {
+      "package": ["apt-get"],
+      "service": ["systemd"],
+      "auto_install_distributions": ["ubuntu", "debian"]
     },
     "environment": {
       "allowed": ["cloud", "local", "unknown"]
