@@ -21,6 +21,15 @@ jobs:
       - name: Validate repository
         run: bash install/validate.sh --static
 
+      - name: Validate platform config lifecycle
+        run: |
+          tmp="$(mktemp -d)"
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_platform_config '$PWD' '$tmp'; ensure_module_config '$PWD' '$tmp' proxy-hub"
+          sudo jq -e '.schema_version == 1 and .services == {}' "$tmp/config/publications.json" >/dev/null
+          printf '%s\n' 'SERVER_EDGE_PROXY_EGRESS_PORT=17890' | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' proxy-hub"
+          sudo grep -q '^SERVER_EDGE_PROXY_EGRESS_PORT=17890$' "$tmp/config/proxy-hub.env"
+
       - name: Validate Proxy Hub compose
         env:
           SERVER_EDGE_PROXY_IMAGE: metacubex/mihomo:v1.19.30
@@ -37,11 +46,7 @@ jobs:
           SERVER_EDGE_PROXY_FEED_PORT: 8780
           SERVER_EDGE_PROXY_CONTROLLER_PORT: 9090
         run: |
-          docker compose \
-            -f proxy-hub/compose.yaml \
-            -f proxy-hub/compose.egress.yaml \
-            -f proxy-hub/compose.local-node.yaml \
-            config >/dev/null
+          docker compose -f proxy-hub/compose.yaml -f proxy-hub/compose.egress.yaml -f proxy-hub/compose.local-node.yaml config >/dev/null
 
       - name: Require node aggregation
         run: |
@@ -65,17 +70,13 @@ jobs:
           for policy in auto fallback select; do
             tmp="$(mktemp -d)"
             sudo install -d -m 755 -o root -g root "$tmp/config"
-            sudo install -d -m 700 -o root -g root \
-              "$tmp/secrets/proxy-hub/providers" \
-              "$tmp/state/proxy-hub/feed" \
-              "$tmp/runtime/proxy-hub"
+            sudo install -d -m 700 -o root -g root "$tmp/secrets/proxy-hub/providers" "$tmp/state/proxy-hub/feed" "$tmp/runtime/proxy-hub"
             cat <<EOF | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
           SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=true
           SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=true
           SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST=node.example.test
           SERVER_EDGE_PROXY_EGRESS_ENABLED=true
           SERVER_EDGE_PROXY_EGRESS_POLICY=$policy
-          SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=https://sub.example.com
           SERVER_EDGE_PROXY_FEED_BIND=loopback
           SERVER_EDGE_PROXY_CONTROLLER_BIND=loopback
           SERVER_EDGE_PROXY_LOCAL_NODE_BIND=loopback
@@ -85,6 +86,9 @@ jobs:
           SERVER_EDGE_PROXY_FEED_PORT=18780
           SERVER_EDGE_PROXY_CONTROLLER_PORT=19090
           EOF
+            cat <<'JSON' | sudo tee "$tmp/config/publications.json" >/dev/null
+          {"schema_version":1,"services":{"proxy-subscription":{"origin":"https://sub.example.com"}}}
+          JSON
             printf '%s\n' 'https://example.com/subscription' | sudo tee "$tmp/secrets/proxy-hub/providers/primary.url" >/dev/null
             printf '%048d\n' 0 | sudo tee "$tmp/secrets/proxy-hub/controller-secret" >/dev/null
             printf '%048d\n' 1 | sudo tee "$tmp/secrets/proxy-hub/subscription-token" >/dev/null
@@ -95,16 +99,14 @@ jobs:
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-public-contract.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
-            sudo docker run --rm \
-              -v "$tmp/runtime/proxy-hub/config.yaml:/etc/mihomo/config.yaml:ro" \
-              -v "$tmp/state/proxy-hub:/var/lib/mihomo" \
-              "$image" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
+            sudo docker run --rm -v "$tmp/runtime/proxy-hub/config.yaml:/etc/mihomo/config.yaml:ro" -v "$tmp/state/proxy-hub:/var/lib/mihomo" "$image" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
             sudo grep -q '^mixed-port: 17890$' "$tmp/runtime/proxy-hub/config.yaml"
             sudo grep -q '^external-controller: "0.0.0.0:19090"$' "$tmp/runtime/proxy-hub/config.yaml"
             sudo grep -q '^    port: 17891$' "$tmp/runtime/proxy-hub/config.yaml"
             feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
             sudo grep -q "server: 'node.example.test'" "$feed"
             sudo grep -q "url: 'https://sub.example.com/$(printf '%048d' 1)/providers/primary.yaml'" "$feed"
+            sudo jq -e '.publication_key == "proxy-subscription" and has("public_origin") == false' "$tmp/runtime/contracts/proxy-subscription.json" >/dev/null
             sudo jq -e '.enabled == true and .endpoint == "http://proxy-hub:17890"' "$tmp/runtime/contracts/proxy-egress.json" >/dev/null
             case "$policy" in
               auto) sudo grep -q '^  - MATCH,AUTO$' "$tmp/runtime/proxy-hub/config.yaml" ;;
@@ -122,7 +124,6 @@ jobs:
           SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false
           SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=false
           SERVER_EDGE_PROXY_EGRESS_ENABLED=false
-          SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=auto
           SERVER_EDGE_PROXY_FEED_BIND=loopback
           SERVER_EDGE_PROXY_CONTROLLER_BIND=loopback
           SERVER_EDGE_PROXY_LOCAL_NODE_BIND=loopback
@@ -136,38 +137,26 @@ jobs:
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
-          if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then
-            echo 'ERROR: disabled egress rendered mixed-port' >&2; exit 1
-          fi
-          if sudo grep -q '^  - name: local-node$' "$tmp/runtime/proxy-hub/config.yaml"; then
-            echo 'ERROR: disabled LOCAL node rendered listener' >&2; exit 1
-          fi
+          if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then echo 'ERROR: disabled egress rendered mixed-port' >&2; exit 1; fi
+          if sudo grep -q '^  - name: local-node$' "$tmp/runtime/proxy-hub/config.yaml"; then echo 'ERROR: disabled LOCAL node rendered listener' >&2; exit 1; fi
           feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
-          if sudo grep -q '^  - name: LOCAL$' "$feed"; then
-            echo 'ERROR: disabled LOCAL node was published' >&2; exit 1
-          fi
+          if sudo grep -q '^  - name: LOCAL$' "$feed"; then echo 'ERROR: disabled LOCAL node was published' >&2; exit 1; fi
           sudo jq -e '.enabled == false and .endpoint == null' "$tmp/runtime/contracts/proxy-egress.json" >/dev/null
 
-      - name: Validate Public Edge subscription route
+      - name: Validate Public Edge publication registry
         run: |
           tmp="$(mktemp -d)"
-          sudo install -d -m 755 -o root -g root "$tmp/runtime/contracts"
+          sudo install -d -m 755 -o root -g root "$tmp/config" "$tmp/runtime/contracts"
+          cat <<'JSON' | sudo tee "$tmp/config/publications.json" >/dev/null
+          {"schema_version":1,"services":{"proxy-subscription":{"origin":"https://sub.example.com"}}}
+          JSON
           cat <<'JSON' | sudo tee "$tmp/runtime/contracts/proxy-subscription.json" >/dev/null
-          {
-            "schema_version": 1,
-            "producer": "proxy-hub",
-            "service": "subscription-feed",
-            "network": "edge_service_proxy_public",
-            "upstream": "http://proxy-feed:8080",
-            "public_origin": "https://sub.example.com"
-          }
+          {"schema_version":1,"producer":"proxy-hub","service":"subscription-feed","publication_key":"proxy-subscription","network":"edge_service_proxy_public","upstream":"http://proxy-feed:8080"}
           JSON
           sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/render-subscription-route.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/write-runtime-env.sh
           caddy_image="$(jq -r '.components.caddy.image' manifests/versions.json)"
-          sudo docker run --rm \
-            -v "$tmp/runtime/public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
-            "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+          sudo docker run --rm -v "$tmp/runtime/public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
           sudo grep -q '^https://sub.example.com {' "$tmp/runtime/public-edge/Caddyfile"
           sudo grep -q '^    reverse_proxy proxy-feed:8080$' "$tmp/runtime/public-edge/Caddyfile"
 
