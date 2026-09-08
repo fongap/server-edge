@@ -91,8 +91,25 @@ YAML
   done
 fi
 
+write_provider_use() {
+  local filename
+  for filename in "${providers[@]}"; do
+    printf "      - '%s'\n" "${filename%.url}" >> "$tmp"
+  done
+}
+
 case "$SERVER_EDGE_PROXY_EGRESS" in
   off)
+    if [[ ${#providers[@]} -gt 0 ]]; then
+      cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: PROVIDER-CACHE
+    type: select
+    hidden: true
+    use:
+YAML
+      write_provider_use
+    fi
     cat >> "$tmp" <<'YAML'
 rules:
   - MATCH,DIRECT
@@ -105,34 +122,53 @@ proxy-groups:
     type: select
     proxies:
       - LOCAL
-rules:
-  - MATCH,PROXY
 YAML
-    ;;
-  provider)
-    cat >> "$tmp" <<'YAML'
-proxy-groups:
-  - name: PROXY
+    if [[ ${#providers[@]} -gt 0 ]]; then
+      cat >> "$tmp" <<'YAML'
+  - name: PROVIDER-CACHE
     type: select
+    hidden: true
     use:
 YAML
-    for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+      write_provider_use
+    fi
     cat >> "$tmp" <<'YAML'
 rules:
   - MATCH,PROXY
 YAML
     ;;
-  hybrid)
+  provider|hybrid)
     cat >> "$tmp" <<'YAML'
 proxy-groups:
+  - name: AUTO
+    type: url-test
+    use:
+YAML
+    write_provider_use
+    cat >> "$tmp" <<'YAML'
+    url: 'https://cp.cloudflare.com'
+    interval: 300
+    tolerance: 100
+    lazy: true
+  - name: FALLBACK
+    type: fallback
+    use:
+YAML
+    write_provider_use
+    cat >> "$tmp" <<'YAML'
+    url: 'https://cp.cloudflare.com'
+    interval: 300
+    lazy: true
   - name: PROXY
     type: select
     proxies:
-      - LOCAL
-    use:
 YAML
-    for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+    if [[ "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
+      printf '      - LOCAL\n' >> "$tmp"
+    fi
     cat >> "$tmp" <<'YAML'
+      - AUTO
+      - FALLBACK
 rules:
   - MATCH,PROXY
 YAML
