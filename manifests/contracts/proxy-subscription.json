@@ -3,11 +3,9 @@
   "contract": "proxy-subscription",
   "producer": "proxy-hub",
   "consumer": "public-edge",
+  "service": "subscription-feed",
+  "publication_key": "proxy-subscription",
   "network": "edge_service_proxy_public",
   "upstream": "http://proxy-feed:8080",
-  "public_origin": {
-    "optional": true,
-    "scheme": "https"
-  },
   "secret_fields": []
 }
