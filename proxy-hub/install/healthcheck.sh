@@ -62,4 +62,4 @@ if [[ "$SERVER_EDGE_PROXY_EGRESS" == local || "$SERVER_EDGE_PROXY_EGRESS" == hyb
     || die "LOCAL node health check failed"
 fi
 
-log "proxy-hub health check passed: egress=$SERVER_EDGE_PROXY_EGRESS feed=$feed_url"
+log "proxy-hub health check passed: egress=$SERVER_EDGE_PROXY_EGRESS feed=ok"
