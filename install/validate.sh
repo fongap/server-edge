@@ -28,7 +28,7 @@ jq -e '.schema_version == 1 and .host_contract.os.allowed == ["linux"] and .host
   || die "invalid manifests/host-contract.json"
 jq -e '.schema_version == 1' "$ROOT_DIR/profiles/default.json" >/dev/null \
   || die "invalid default profile"
-jq -e '.schema_version == 1 and (.server_edge | type == "string") and (.components.mihomo.version | type == "string") and (.components.mihomo.image | type == "string")' \
+jq -e '.schema_version == 1 and (.server_edge | type == "string") and (.components.mihomo.version | type == "string") and (.components.mihomo.image | type == "string") and (.components.busybox.version | type == "string") and (.components.busybox.image | type == "string")' \
   "$ROOT_DIR/manifests/versions.json" >/dev/null \
   || die "invalid manifests/versions.json"
 
@@ -44,7 +44,14 @@ for module in infra app-hub proxy-hub ai-gateway ai-workers public-edge; do
   [[ -d "$ROOT_DIR/$module" ]] || die "missing module directory: $module"
 done
 
-for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md proxy-hub/compose.yaml VERSION; do
+for file in \
+  docs/ARCHITECTURE.md \
+  docs/GOVERNANCE.md \
+  docs/HOST-CONTRACT.md \
+  proxy-hub/compose.yaml \
+  proxy-hub/compose.egress.yaml \
+  proxy-hub/compose.local-node.yaml \
+  VERSION; do
   [[ -s "$ROOT_DIR/$file" ]] || die "missing or empty: $file"
 done
 
