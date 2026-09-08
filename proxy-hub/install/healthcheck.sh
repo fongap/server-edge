@@ -25,8 +25,8 @@ curl -fsS --max-time 5 \
   || die "proxy controller health check failed"
 
 curl -fsS --max-time 20 \
-  --proxy http://127.0.0.1:7890 \
+  --proxy "http://${SERVER_EDGE_PROXY_BIND_IP}:7890" \
   https://cp.cloudflare.com >/dev/null \
   || die "proxy egress health check failed"
 
-log "proxy-hub health check passed"
+log "proxy-hub health check passed: LOCAL node reachable at ${SERVER_EDGE_PROXY_BIND_IP}:7890"
