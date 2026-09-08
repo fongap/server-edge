@@ -85,7 +85,7 @@ Overlay Network 属于推荐管理能力，不是所有节点的强制前置。�
 
 ```text
 auto       默认；可安装但未登录不阻断 Infra
- off       不启用 Overlay
+off        不启用 Overlay
 required   必须安装并连接
 ```
 
@@ -136,7 +136,17 @@ Ubuntu / Debian
 - `Compatible`：满足 Host Contract，但未完成完整验证或不存在专用 Adapter；
 - `Unsupported`：缺少必要能力。
 
-当前 M1 首要实机验证目标是 Ubuntu/Debian 系的 amd64/arm64 Host；Oracle Cloud 只是其中一个部署环境。
+### 当前 Verified
+
+| 环境 | 系统 | 架构 | Package | Service | Runtime | Overlay |
+| --- | --- | --- | --- | --- | --- | --- |
+| Oracle Cloud | Ubuntu 24.04 Noble | arm64 | apt-get | systemd | Docker Engine + Compose v2 | Tailscale |
+
+该目标已完成：首次 bootstrap、重复 bootstrap、Host Contract、Infra healthcheck、受管 `edge_*` 网络、Tailscale 已连接及 Shell 可执行位恢复验证。
+
+`SERVER_EDGE_HOST_ENVIRONMENT=unknown` 在当前探测结果中属于合法状态；Host Detect 不通过猜测云厂商来改变架构行为。
+
+后续验证其他发行版或本地主机时，以相同验收标准逐项提升到 Verified。
 
 ## 7. 幂等与安全
 
