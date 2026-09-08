@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" 2>/dev/null && pwd || true)"
 
 repo=""
 ref=""
@@ -16,29 +15,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$repo" && -n "$ref" ]] || { echo 'ERROR: --repo and --ref are required' >&2; exit 2; }
-command -v curl >/dev/null || { echo 'ERROR: curl is required' >&2; exit 1; }
-command -v tar >/dev/null || { echo 'ERROR: tar is required' >&2; exit 1; }
-command -v jq >/dev/null || { echo 'ERROR: jq is required' >&2; exit 1; }
-command -v docker >/dev/null || { echo 'ERROR: docker is required' >&2; exit 1; }
+[[ "$(uname -s)" == Linux ]] || { echo 'ERROR: Server Edge requires Linux' >&2; exit 1; }
+[[ $EUID -eq 0 ]] || { echo 'ERROR: run bootstrap with sudo/root' >&2; exit 1; }
+command -v curl >/dev/null || { echo 'ERROR: curl is required to fetch the release' >&2; exit 1; }
+command -v tar >/dev/null || { echo 'ERROR: tar is required to unpack the release' >&2; exit 1; }
 
 mkdir -p "$root/releases" "$root/runtime"
-
-# Minimal self-contained GitHub release fetch. GITHUB_TOKEN is optional for public repos.
 archive="$(mktemp)"; tmp="$(mktemp -d)"
+cleanup() { rm -f "$archive"; rm -rf "$tmp"; }
+trap cleanup EXIT
 headers=(-H 'Accept: application/vnd.github+json')
 [[ -n "${GITHUB_TOKEN:-}" ]] && headers+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 curl -fL --retry 3 --retry-delay 2 "${headers[@]}" \
   "https://api.github.com/repos/${repo}/tarball/${ref}" -o "$archive"
 tar -xzf "$archive" -C "$tmp"
 source_dir="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d | head -n1)"
-[[ -n "$source_dir" ]] || { echo 'ERROR: invalid archive' >&2; exit 1; }
+[[ -n "$source_dir" ]] || { echo 'ERROR: invalid GitHub archive' >&2; exit 1; }
 release_id="$(printf '%s' "$ref" | tr '/:@ ' '____' | tr -cd '[:alnum:]._+-')-$(date -u +%Y%m%d%H%M%S)"
 release_dir="$root/releases/$release_id"
 mv "$source_dir" "$release_dir"
-rm -f "$archive"; rm -rf "$tmp"
 
-"$release_dir/install/validate.sh"
-"$release_dir/install/install.sh" --root "$root" --profile "$profile"
+bash "$release_dir/install/install.sh" --root "$root" --profile "$profile"
 ln -sfn "$release_dir" "$root/current.next"
 mv -Tf "$root/current.next" "$root/current"
 cat > "$root/runtime/install.env" <<META
