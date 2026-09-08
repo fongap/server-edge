@@ -26,8 +26,24 @@ jobs:
           SERVER_EDGE_PROXY_IMAGE: metacubex/mihomo:v1.19.30
           SERVER_EDGE_PROXY_CONFIG: /tmp/server-edge-proxy-config.yaml
           SERVER_EDGE_PROXY_STATE: /tmp/server-edge-proxy-state
+          SERVER_EDGE_PROXY_BIND_IP: 127.0.0.1
           SERVER_EDGE_PROXY_CONTROLLER_BIND_IP: 127.0.0.1
         run: docker compose -f proxy-hub/compose.yaml config >/dev/null
+
+      - name: Validate Proxy Hub LOCAL baseline
+        run: |
+          tmp="$(mktemp -d)"
+          sudo install -d -m 700 -o root -g root "$tmp/secrets/proxy-hub/providers" "$tmp/runtime/proxy-hub"
+          printf '%048d\n' 0 | sudo tee "$tmp/secrets/proxy-hub/controller-secret" >/dev/null
+          sudo chmod 600 "$tmp/secrets/proxy-hub/controller-secret"
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
+          sudo grep -q '^  - name: LOCAL$' "$tmp/runtime/proxy-hub/config.yaml"
+          sudo grep -q '^    type: direct$' "$tmp/runtime/proxy-hub/config.yaml"
+          sudo grep -q '^      - LOCAL$' "$tmp/runtime/proxy-hub/config.yaml"
+          if sudo grep -q '^proxy-providers:' "$tmp/runtime/proxy-hub/config.yaml"; then
+            echo 'ERROR: empty baseline unexpectedly rendered proxy providers' >&2
+            exit 1
+          fi
 
       - name: Validate release script permissions
         run: |
