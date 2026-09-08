@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "contract": "proxy-egress",
+  "producer": "proxy-hub",
+  "consumers": ["app-hub", "ai-gateway", "ai-workers"],
+  "networks": ["edge_egress_ai", "edge_egress_workers"],
+  "protocol": "mixed-http-socks5",
+  "runtime_contract": "/opt/server-edge/runtime/contracts/proxy-egress.json",
+  "optional": true,
+  "secret_fields": []
+}
