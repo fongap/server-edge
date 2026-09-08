@@ -50,7 +50,7 @@ server-edge/
 | --- | --- | --- |
 | `infra` | Host Adapter、主机初始化、网络、管理面、存储、安全、备份 | 是 |
 | `app-hub` | 通用应用承载 | 是 |
-| `proxy-hub` | 代理聚合、健康检查、出站策略 | 是 |
+| `proxy-hub` | 代理聚合、订阅分发、健康检查、可选出站策略 | 是 |
 | `ai-gateway` | AI API、模型、Provider、Key 与请求调度 | 是 |
 | `ai-workers` | 云端或本地 AI Worker / Agent 执行与工具调用 | 是 |
 | `public-edge` | 公网入口、域名、TLS、反向代理 | 是 |
@@ -172,17 +172,65 @@ overlay=available|unavailable
                             ▲           │
                             └───────────┘
                                 AI API
+```
 
-需要代理的出站：
+需要代理的显式出站：
 
+```text
 app-hub / ai-gateway / ai-workers
                 │
                 ▼
-            proxy-hub
+            proxy-hub:7890
                 │
-                ▼
-             Internet
+                ├── LOCAL
+                └── Provider / AUTO / FALLBACK
+                        │
+                        ▼
+                     Internet
 ```
+
+Proxy Hub 的统一出口是可选能力；`egress=off` 时不提供 `7890` 出站服务，但订阅聚合与分发仍可独立运行。
+
+本机节点与统一出口分离：
+
+```text
+Tailnet Client
+     │
+     ▼
+<overlay-ip>:7891
+     │
+     ▼
+LOCAL direct
+     │
+     ▼
+Current Host Internet Egress
+```
+
+`7891` 只在 `local/hybrid` 模式存在，并固定使用当前宿主自身公网出口，不受统一 `PROXY` 组选择影响。
+
+订阅分发：
+
+```text
+Provider Secret URLs
+        │
+        ▼
+      Mihomo
+        │  cache
+        ▼
+Proxy Hub Feed
+        │
+        ├── Tailnet: <overlay-ip>:8780
+        │
+        └── edge_service_proxy_public
+                    │
+                    ▼
+                public-edge
+                    │
+                    ▼
+        optional https://sub.example.com
+```
+
+Provider 原始 URL 不进入客户端订阅。Feed 使用 Token 化路径；Public Edge 只负责可选公网域名/TLS，不读取 Proxy Hub Secret。
 
 管理面与业务面分离：
 
@@ -202,13 +250,21 @@ SSH / Admin / Recovery
 
 - Management：SSH、私有管理、节点互联、故障恢复；
 - Ingress：Public Edge 到目标能力域；
-- Service：明确的跨模块 API 调用；
+- Service：明确的跨模块 API/Feed 调用；
 - Egress：需要代理的服务到 Proxy Hub；
 - Data：数据库、缓存和持久化服务。
 
 一个逻辑平面可以对应多个 Docker Network。不得把“同一平面”误解为“所有服务共用同一 bridge”。
 
 跨 Compose 的 `edge_*` 网络由 `infra/network` 唯一声明、创建和维护；业务模块只能按 `external: true` 引用。
+
+Proxy Hub 与 Public Edge 的订阅发布只通过：
+
+```text
+edge_service_proxy_public
+```
+
+内部服务名为 `proxy-feed:8080`。Public Edge 不得直接读取 Proxy Hub 的 `state/`、`secrets/` 或内部目录。
 
 ## 10. 初始化与运行
 
@@ -238,20 +294,25 @@ infra bootstrap
 /opt/server-edge/
 ├── current -> releases/<release-id>
 ├── releases/
+├── config/
 ├── state/
 ├── secrets/
 ├── runtime/
+│   └── contracts/
 ├── backups/
 └── shared/
     └── assets/
 ```
 
 - `releases/`：不可变代码与配置模板；
-- `state/`：模块持久状态；
+- `config/`：用户可持久修改的非敏感配置；
+- `state/`：模块持久状态与可再生成缓存；
 - `secrets/`：本地敏感数据；
-- `runtime/`：安装器和运行时元数据；
+- `runtime/`：安装器、运行时元数据与显式跨模块运行契约；
 - `backups/`：一致性备份产物；
 - `shared/assets/`：可选的版本化、校验、只读大型资产。
+
+跨模块运行契约可以位于 `runtime/contracts/`，但必须是最小、机器可读、非 Secret 的接口描述；不得借此暴露另一模块内部文件布局。
 
 ## 12. 共享大型资产
 
@@ -271,9 +332,11 @@ infra bootstrap
 ```text
 runtime      -> Docker Engine + Compose
 overlay      -> Tailscale
-proxy-hub    -> Mihomo
+proxy-hub    -> Mihomo + minimal static Feed
 public-edge  -> Caddy
 ai-workers   -> Delta / 其他 AI Worker 平台
 ```
 
 这些具体实现不得升级为一级架构名。替换具体实现不应要求重构一级目录或整体网络模型。
+
+完整 Sub-Store 不是 M2 默认依赖。只有出现多格式转换、复杂规则编排、可视化订阅管理等明确需求时，才允许作为 Proxy Hub 内部实现扩展重新评估。
