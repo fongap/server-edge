@@ -42,7 +42,7 @@ for module in infra app-hub proxy-hub ai-gateway ai-workers public-edge; do
   [[ -d "$ROOT_DIR/$module" ]] || die "missing module directory: $module"
 done
 
-for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md docs/CONFIGURATION.md config/publications.default.json manifests/configuration.json manifests/contracts/proxy-subscription.json manifests/contracts/proxy-egress.json manifests/proxy-hub.json proxy-hub/config/defaults.env proxy-hub/compose.yaml proxy-hub/compose.egress.yaml proxy-hub/compose.local-node.yaml public-edge/compose.yaml VERSION; do
+for file in docs/ARCHITECTURE.md docs/GOVERNANCE.md docs/HOST-CONTRACT.md docs/CONFIGURATION.md config/publications.default.json manifests/configuration.json manifests/contracts/proxy-subscription.json manifests/contracts/proxy-egress.json manifests/proxy-hub.json infra/config/defaults.env infra/scripts/load-settings.sh proxy-hub/config/defaults.env proxy-hub/compose.yaml proxy-hub/compose.egress.yaml proxy-hub/compose.local-node.yaml public-edge/compose.yaml VERSION; do
   [[ -s "$ROOT_DIR/$file" ]] || die "missing or empty: $file"
 done
 
