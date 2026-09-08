@@ -31,6 +31,11 @@ jobs:
           SERVER_EDGE_PROXY_FEED_BIND_IP: 127.0.0.1
           SERVER_EDGE_PROXY_CONTROLLER_BIND_IP: 127.0.0.1
           SERVER_EDGE_PROXY_NODE_BIND_IP: 127.0.0.1
+          SERVER_EDGE_PROXY_EGRESS_BIND_IP: 127.0.0.1
+          SERVER_EDGE_PROXY_EGRESS_PORT: 7890
+          SERVER_EDGE_PROXY_LOCAL_NODE_PORT: 7891
+          SERVER_EDGE_PROXY_FEED_PORT: 8780
+          SERVER_EDGE_PROXY_CONTROLLER_PORT: 9090
         run: |
           docker compose \
             -f proxy-hub/compose.yaml \
@@ -38,21 +43,53 @@ jobs:
             -f proxy-hub/compose.local-node.yaml \
             config >/dev/null
 
-      - name: Validate Proxy Hub modes
+      - name: Require node aggregation
+        run: |
+          tmp="$(mktemp -d)"
+          sudo install -d -m 755 -o root -g root "$tmp/config"
+          sudo install -d -m 700 -o root -g root "$tmp/secrets/proxy-hub/providers"
+          cat <<'EOF' | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
+          SERVER_EDGE_PROXY_FEED_BIND=loopback
+          SERVER_EDGE_PROXY_CONTROLLER_BIND=loopback
+          SERVER_EDGE_PROXY_LOCAL_NODE_BIND=loopback
+          SERVER_EDGE_PROXY_EGRESS_BIND=loopback
+          EOF
+          if sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/validate-inputs.sh; then
+            echo 'ERROR: Proxy Hub accepted an empty provider set' >&2
+            exit 1
+          fi
+
+      - name: Validate decoupled Proxy Hub settings
         run: |
           image="$(jq -r '.components.mihomo.image' manifests/versions.json)"
-          for mode in off local; do
+          for policy in auto fallback select; do
             tmp="$(mktemp -d)"
             sudo install -d -m 755 -o root -g root "$tmp/config"
             sudo install -d -m 700 -o root -g root \
               "$tmp/secrets/proxy-hub/providers" \
               "$tmp/state/proxy-hub/feed" \
               "$tmp/runtime/proxy-hub"
-            printf 'SERVER_EDGE_PROXY_EGRESS=%s\nSERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=auto\n' "$mode" \
-              | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
+            cat <<EOF | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
+          SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=true
+          SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=true
+          SERVER_EDGE_PROXY_LOCAL_NODE_ADVERTISE_HOST=node.example.test
+          SERVER_EDGE_PROXY_EGRESS_ENABLED=true
+          SERVER_EDGE_PROXY_EGRESS_POLICY=$policy
+          SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=https://sub.example.com
+          SERVER_EDGE_PROXY_FEED_BIND=loopback
+          SERVER_EDGE_PROXY_CONTROLLER_BIND=loopback
+          SERVER_EDGE_PROXY_LOCAL_NODE_BIND=loopback
+          SERVER_EDGE_PROXY_EGRESS_BIND=loopback
+          SERVER_EDGE_PROXY_EGRESS_PORT=17890
+          SERVER_EDGE_PROXY_LOCAL_NODE_PORT=17891
+          SERVER_EDGE_PROXY_FEED_PORT=18780
+          SERVER_EDGE_PROXY_CONTROLLER_PORT=19090
+          EOF
+            printf '%s\n' 'https://example.com/subscription' | sudo tee "$tmp/secrets/proxy-hub/providers/primary.url" >/dev/null
             printf '%048d\n' 0 | sudo tee "$tmp/secrets/proxy-hub/controller-secret" >/dev/null
             printf '%048d\n' 1 | sudo tee "$tmp/secrets/proxy-hub/subscription-token" >/dev/null
-            sudo chmod 600 "$tmp/secrets/proxy-hub/controller-secret" "$tmp/secrets/proxy-hub/subscription-token"
+            sudo chmod 600 "$tmp/secrets/proxy-hub/providers/primary.url" "$tmp/secrets/proxy-hub/controller-secret" "$tmp/secrets/proxy-hub/subscription-token"
+            sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/validate-inputs.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-runtime-env.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
@@ -61,31 +98,51 @@ jobs:
               -v "$tmp/runtime/proxy-hub/config.yaml:/etc/mihomo/config.yaml:ro" \
               -v "$tmp/state/proxy-hub:/var/lib/mihomo" \
               "$image" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
-            sudo test -s "$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
-            if [[ "$mode" == local ]]; then
-              sudo grep -q '^  - name: local-node$' "$tmp/runtime/proxy-hub/config.yaml"
-              sudo grep -q '^    proxy: LOCAL$' "$tmp/runtime/proxy-hub/config.yaml"
-            else
-              if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then
-                echo 'ERROR: off mode unexpectedly exposes unified egress' >&2
-                exit 1
-              fi
-            fi
+            sudo grep -q '^mixed-port: 17890$' "$tmp/runtime/proxy-hub/config.yaml"
+            sudo grep -q '^external-controller: "0.0.0.0:19090"$' "$tmp/runtime/proxy-hub/config.yaml"
+            sudo grep -q '^    port: 17891$' "$tmp/runtime/proxy-hub/config.yaml"
+            feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
+            sudo grep -q "server: 'node.example.test'" "$feed"
+            sudo grep -q "url: 'https://sub.example.com/$(printf '%048d' 1)/providers/primary.yaml'" "$feed"
+            case "$policy" in
+              auto) sudo grep -q '^  - MATCH,AUTO$' "$tmp/runtime/proxy-hub/config.yaml" ;;
+              fallback) sudo grep -q '^  - MATCH,FALLBACK$' "$tmp/runtime/proxy-hub/config.yaml" ;;
+              select) sudo grep -q '^  - MATCH,PROXY$' "$tmp/runtime/proxy-hub/config.yaml" ;;
+            esac
           done
 
-      - name: Validate provider-required modes
+      - name: Validate optional local node and egress
         run: |
-          for mode in provider hybrid; do
-            tmp="$(mktemp -d)"
-            sudo install -d -m 755 -o root -g root "$tmp/config"
-            sudo install -d -m 700 -o root -g root "$tmp/secrets/proxy-hub/providers"
-            printf 'SERVER_EDGE_PROXY_EGRESS=%s\nSERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=https://sub.example.com\n' "$mode" \
-              | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
-            printf '%s\n' 'https://example.com/subscription' \
-              | sudo tee "$tmp/secrets/proxy-hub/providers/primary.url" >/dev/null
-            sudo chmod 600 "$tmp/secrets/proxy-hub/providers/primary.url"
-            sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/validate-inputs.sh
-          done
+          tmp="$(mktemp -d)"
+          sudo install -d -m 755 -o root -g root "$tmp/config"
+          sudo install -d -m 700 -o root -g root "$tmp/secrets/proxy-hub/providers" "$tmp/state/proxy-hub/feed" "$tmp/runtime/proxy-hub"
+          cat <<'EOF' | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
+          SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false
+          SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=false
+          SERVER_EDGE_PROXY_EGRESS_ENABLED=false
+          SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=auto
+          SERVER_EDGE_PROXY_FEED_BIND=loopback
+          SERVER_EDGE_PROXY_CONTROLLER_BIND=loopback
+          SERVER_EDGE_PROXY_LOCAL_NODE_BIND=loopback
+          SERVER_EDGE_PROXY_EGRESS_BIND=loopback
+          EOF
+          printf '%s\n' 'https://example.com/subscription' | sudo tee "$tmp/secrets/proxy-hub/providers/primary.url" >/dev/null
+          printf '%048d\n' 0 | sudo tee "$tmp/secrets/proxy-hub/controller-secret" >/dev/null
+          printf '%048d\n' 1 | sudo tee "$tmp/secrets/proxy-hub/subscription-token" >/dev/null
+          sudo chmod 600 "$tmp/secrets/proxy-hub/providers/primary.url" "$tmp/secrets/proxy-hub/controller-secret" "$tmp/secrets/proxy-hub/subscription-token"
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-runtime-env.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
+          if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then
+            echo 'ERROR: disabled egress rendered mixed-port' >&2; exit 1
+          fi
+          if sudo grep -q '^  - name: local-node$' "$tmp/runtime/proxy-hub/config.yaml"; then
+            echo 'ERROR: disabled LOCAL node rendered listener' >&2; exit 1
+          fi
+          feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
+          if sudo grep -q '^  - name: LOCAL$' "$feed"; then
+            echo 'ERROR: disabled LOCAL node was published' >&2; exit 1
+          fi
 
       - name: Validate Public Edge subscription route
         run: |
