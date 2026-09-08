@@ -5,24 +5,29 @@ RELEASE_DIR="$(cd "$HERE/../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
+export SERVER_EDGE_ROOT="$root"
+source "$HERE/load-settings.sh"
 provider_dir="$root/secrets/proxy-hub/providers"
-secret_file="$root/secrets/proxy-hub/controller-secret"
+controller_secret_file="$root/secrets/proxy-hub/controller-secret"
+feed_token_file="$root/secrets/proxy-hub/subscription-token"
 runtime_dir="$root/runtime/proxy-hub"
 output="$runtime_dir/config.yaml"
 
-SERVER_EDGE_ROOT="$root" bash "$HERE/validate-inputs.sh"
-[[ -s "$secret_file" ]] || die "missing controller secret: $secret_file"
+bash "$HERE/validate-inputs.sh"
+[[ -s "$controller_secret_file" ]] || die "missing controller secret: $controller_secret_file"
+[[ -s "$feed_token_file" ]] || die "missing subscription token: $feed_token_file"
 
 mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
-controller_secret="$(tr -d '\r\n' < "$secret_file")"
+controller_secret="$(tr -d '\r\n' < "$controller_secret_file")"
+feed_token="$(tr -d '\r\n' < "$feed_token_file")"
 [[ "$controller_secret" =~ ^[A-Fa-f0-9]{48}$ ]] || die "controller secret must be 48 hexadecimal characters"
+[[ "$feed_token" =~ ^[A-Fa-f0-9]{48}$ ]] || die "subscription token must be 48 hexadecimal characters"
 
 mkdir -p "$runtime_dir"
 tmp="$(mktemp "$runtime_dir/config.yaml.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
 cat > "$tmp" <<'YAML'
-mixed-port: 7890
 allow-lan: true
 bind-address: "*"
 mode: rule
@@ -38,11 +43,27 @@ cat >> "$tmp" <<'YAML'
 profile:
   store-selected: true
   store-fake-ip: false
+YAML
+
+if [[ "$SERVER_EDGE_PROXY_EGRESS" != off ]]; then
+  printf 'mixed-port: 7890\n' >> "$tmp"
+fi
+
+if [[ "$SERVER_EDGE_PROXY_EGRESS" == local || "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
+  cat >> "$tmp" <<'YAML'
 proxies:
   - name: LOCAL
     type: direct
     udp: true
+listeners:
+  - name: local-node
+    type: socks
+    port: 7891
+    listen: 0.0.0.0
+    udp: true
+    proxy: LOCAL
 YAML
+fi
 
 if [[ ${#providers[@]} -gt 0 ]]; then
   cat >> "$tmp" <<'YAML'
@@ -56,7 +77,7 @@ YAML
   '$name':
     type: http
     url: '$url_escaped'
-    path: './providers/$name.yaml'
+    path: './feed/$feed_token/providers/$name.yaml'
     interval: 21600
     health-check:
       enable: true
@@ -68,51 +89,58 @@ YAML
       additional-prefix: '[$name] '
 YAML
   done
-
-  cat >> "$tmp" <<'YAML'
-proxy-groups:
-  - name: AUTO
-    type: url-test
-    use:
-YAML
-  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
-  cat >> "$tmp" <<'YAML'
-    url: 'https://cp.cloudflare.com'
-    interval: 300
-    tolerance: 100
-    lazy: true
-  - name: FALLBACK
-    type: fallback
-    use:
-YAML
-  for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
-  cat >> "$tmp" <<'YAML'
-    url: 'https://cp.cloudflare.com'
-    interval: 300
-    lazy: true
-  - name: PROXY
-    type: select
-    proxies:
-      - LOCAL
-      - AUTO
-      - FALLBACK
-rules:
-  - MATCH,PROXY
-YAML
-else
-  cat >> "$tmp" <<'YAML'
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies:
-      - LOCAL
-rules:
-  - MATCH,PROXY
-YAML
 fi
+
+case "$SERVER_EDGE_PROXY_EGRESS" in
+  off)
+    cat >> "$tmp" <<'YAML'
+rules:
+  - MATCH,DIRECT
+YAML
+    ;;
+  local)
+    cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - LOCAL
+rules:
+  - MATCH,PROXY
+YAML
+    ;;
+  provider)
+    cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: PROXY
+    type: select
+    use:
+YAML
+    for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+    cat >> "$tmp" <<'YAML'
+rules:
+  - MATCH,PROXY
+YAML
+    ;;
+  hybrid)
+    cat >> "$tmp" <<'YAML'
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - LOCAL
+    use:
+YAML
+    for filename in "${providers[@]}"; do printf "      - '%s'\n" "${filename%.url}" >> "$tmp"; done
+    cat >> "$tmp" <<'YAML'
+rules:
+  - MATCH,PROXY
+YAML
+    ;;
+esac
 
 chown root:root "$tmp"
 chmod 600 "$tmp"
 mv -f "$tmp" "$output"
 trap - EXIT
-log "proxy config rendered: LOCAL node + ${#providers[@]} provider(s)"
+log "proxy config rendered: egress=$SERVER_EDGE_PROXY_EGRESS providers=${#providers[@]}"
