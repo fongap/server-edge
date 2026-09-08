@@ -64,79 +64,78 @@ SERVER_EDGE_OVERLAY=required
 
 ## M2 Proxy Hub
 
-M2 使用 Mihomo `v1.19.30`，同时提供代理聚合、Token 化订阅 Feed 与可选显式出口。
+M2 使用 Mihomo `v1.19.30`。**节点聚合是必需能力**：启用 Proxy Hub 时必须至少配置一个 Provider；LOCAL、统一出口、订阅域名均是独立可配置能力。
 
-出口模式持久化在：
+```text
+Provider(s) ──┐
+              ├── AUTO / FALLBACK / PROXY ── Subscription Feed
+LOCAL 可选 ───┘
+                         │
+                         └── Unified Egress 可选
+```
+
+默认参数唯一来源：
+
+```text
+proxy-hub/config/defaults.env
+```
+
+首次安装复制为：
 
 ```text
 /opt/server-edge/config/proxy-hub.env
 ```
 
-支持：
+配置分层：
 
 ```text
-SERVER_EDGE_PROXY_EGRESS=off
-SERVER_EDGE_PROXY_EGRESS=local
-SERVER_EDGE_PROXY_EGRESS=provider
-SERVER_EDGE_PROXY_EGRESS=hybrid
+节点      LOCAL_NODE_ENABLED / LOCAL_NODE_PUBLISH / LOCAL_NODE_ADVERTISE_HOST
+出口      EGRESS_ENABLED / EGRESS_POLICY
+发布      SUBSCRIPTION_ORIGIN / FEED_BIND
+暴露      CONTROLLER_BIND / LOCAL_NODE_BIND / EGRESS_BIND
+端口      EGRESS_PORT / LOCAL_NODE_PORT / FEED_PORT / CONTROLLER_PORT
+健康      HEALTH_URL / HEALTH_INTERVAL / PROBE_INTERVAL / HEALTH_TIMEOUT
 ```
 
-默认 `local`。`LOCAL` 表示当前宿主自身的公网出口；部署在当前 Oracle Compute 时就是 Oracle 节点，但代码不硬编码 Oracle。
-
-端口职责分离：
-
-```text
-7890  统一显式出口，仅 egress != off
-7891  LOCAL 专用 SOCKS5 节点，仅 local/hybrid
-8780  订阅 Feed
-9090  Controller
-```
-
-`7891` 固定直出当前宿主，不受 `PROXY` 选择外部 Provider 的影响。
-
-Provider 仍通过 root-only `*.url` 文件配置：
+Provider Secret：
 
 ```text
 /opt/server-edge/secrets/proxy-hub/providers/*.url
 ```
 
-上游真实订阅 URL 不写进客户端 Feed。Mihomo 先缓存 Provider，Feed 再从 Server Edge 自己的地址对外提供。
+至少一个，每个文件只保存一个 HTTPS 上游订阅 URL，Owner 为 `root`，权限为 `0600` 或 `0400`。
 
-有 Provider 时同时提供：
+LOCAL 是当前宿主自身公网出口。部署在当前 Oracle Compute 时，LOCAL 就是 Oracle 节点，但代码不硬编码 Oracle。LOCAL 节点是否运行、是否发布到客户端订阅、订阅中公布什么 Host 都可独立设置。
 
-```text
-AUTO      自动选优
-FALLBACK  故障切换
-PROXY     统一选择入口
-```
-
-订阅地址格式：
+统一出口可完全关闭：
 
 ```text
-<BASE>/<TOKEN>/mihomo.yaml
+SERVER_EDGE_PROXY_EGRESS_ENABLED=false
 ```
 
-默认 `BASE` 为 Tailnet 地址：
+关闭后节点聚合、Provider 健康检查、订阅 Feed 和可选 LOCAL 节点仍正常工作。
+
+订阅地址：
 
 ```text
-http://<TAILSCALE_IP>:8780
+<ORIGIN>/<TOKEN>/mihomo.yaml
 ```
 
-完整地址只在显式执行以下命令时显示，避免 Token 进入普通日志：
+默认 Origin 由 Feed Bind 与 Feed Port 自动生成；也可独立绑定 HTTPS 域名：
+
+```text
+SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=https://sub.example.com
+```
+
+Proxy Hub 不占用公网 `80/443`。自定义域名由 `public-edge` 通过 `edge_service_proxy_public` 消费订阅契约并负责 TLS/反向代理。
+
+完整端点只在显式执行时显示：
 
 ```bash
 sudo /opt/server-edge/current/proxy-hub/scripts/show-endpoints.sh
 ```
 
-可选自定义 HTTPS Origin：
-
-```text
-SERVER_EDGE_PROXY_SUBSCRIPTION_BASE_URL=https://sub.example.com
-```
-
-Proxy Hub 自己不发布公网 `80/443`。它通过 `edge_service_proxy_public` 提供内部 Feed，并写出 `/opt/server-edge/runtime/contracts/proxy-subscription.json`；后续由 `public-edge` 消费契约，负责域名、TLS 和反向代理。
-
-M2 不启用 TUN，不劫持宿主流量，也不引入第二代理核心。当前不引入完整 Sub-Store；只有出现多格式转换、可视化订阅管理等明确需求时再评估。
+M2 不启用 TUN，不劫持宿主流量，也不引入第二代理核心。完整参数与运维说明见 `proxy-hub/README.md`。
 
 ## 文档
 
