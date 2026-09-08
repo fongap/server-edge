@@ -8,9 +8,10 @@ root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 export SERVER_EDGE_ROOT="$root"
 source "$HERE/load-settings.sh"
 provider_dir="$root/secrets/proxy-hub/providers"
-
-[[ -d "$provider_dir" ]] || die "proxy provider directory is missing: $provider_dir"
-mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
+providers=()
+if [[ -d "$provider_dir" ]]; then
+  mapfile -t providers < <(find "$provider_dir" -maxdepth 1 -type f -name '*.url' -printf '%f\n' | LC_ALL=C sort)
+fi
 
 if [[ "$SERVER_EDGE_PROXY_EGRESS" == provider || "$SERVER_EDGE_PROXY_EGRESS" == hybrid ]]; then
   [[ ${#providers[@]} -gt 0 ]] || die "egress mode $SERVER_EDGE_PROXY_EGRESS requires at least one provider URL file"
