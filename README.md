@@ -33,17 +33,7 @@ Oracle Cloud、Ubuntu、本地服务器都只是部署目标，不是架构身�
 
 M1 已完成。
 
-已实现：
-
-- Host Detect；
-- Host Contract 校验；
-- `apt + systemd` 首个 Adapter；
-- Docker Engine + Compose Runtime；
-- Tailscale Overlay；
-- `edge_*` 受管网络；
-- Infra 健康检查；
-- Release Shell 可执行位恢复；
-- 静态 CI 与重复安装验证。
+已实现：Host Detect、Host Contract 校验、`apt + systemd` Adapter、Docker Engine + Compose Runtime、Tailscale Overlay、`edge_*` 受管网络、Infra 健康检查、Release Shell 可执行位恢复、静态 CI 与重复安装验证。
 
 首个 Verified Target：
 
@@ -72,11 +62,43 @@ SERVER_EDGE_OVERLAY=required
 /opt/server-edge/secrets/infra/tailscale-auth-key
 ```
 
+## M2 Proxy Hub
+
+M2 当前实现固定使用 Mihomo `v1.19.30`，采用单代理核心：
+
+- 多订阅 `proxy-providers` 聚合；
+- Provider 健康检查；
+- `AUTO` 自动选优；
+- `FALLBACK` 故障切换；
+- HTTP/SOCKS Mixed Port `7890`；
+- Controller `9090`；
+- 不启用 TUN，不劫持宿主流量；
+- 不引入 Sub-Store、第二代理核心或常驻 Dashboard。
+
+在启用 Proxy Hub 的 Profile 下安装前，至少准备一个 Provider Secret：
+
+```bash
+sudo mkdir -p /opt/server-edge/secrets/proxy-hub/providers
+sudo sh -c 'printf "%s\n" "https://example.com/subscription" > /opt/server-edge/secrets/proxy-hub/providers/primary.url'
+sudo chmod 600 /opt/server-edge/secrets/proxy-hub/providers/primary.url
+```
+
+每个 `*.url` 只保存一个 HTTPS 订阅地址，Owner 必须为 `root`。真实订阅 URL 和 Controller Secret 都不进入 Git。
+
+运行后：
+
+```text
+Host local proxy     127.0.0.1:7890
+Container proxy      proxy-hub:7890
+Controller           Tailscale IPv4:9090（无 Tailnet 时仅 127.0.0.1）
+```
+
 ## 文档
 
 - `docs/ARCHITECTURE.md`：系统组成、边界、网络与运行模型；
 - `docs/GOVERNANCE.md`：允许和禁止的变更；
 - `docs/HOST-CONTRACT.md`：Linux 宿主必须满足的能力契约；
+- `proxy-hub/README.md`：Proxy Hub 配置、Secret 与生命周期；
 - `manifests/`：机器可读系统契约；
 - `profiles/`：选择本节点启用的能力模块；
 - `install/`：安装、Patch、回滚和验证入口。
