@@ -5,14 +5,17 @@ RELEASE_DIR="$(cd "$HERE/../../.." && pwd)"
 source "$RELEASE_DIR/install/lib/common.sh"
 
 root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
-mode="${SERVER_EDGE_OVERLAY:-auto}"
-case "$mode" in auto|off|required) ;; *) die "SERVER_EDGE_OVERLAY must be auto, off, or required" ;; esac
+export SERVER_EDGE_ROOT="$root"
+source "$RELEASE_DIR/infra/scripts/load-settings.sh"
+
+mode="$SERVER_EDGE_INFRA_OVERLAY"
 [[ "$mode" == off ]] && { log "overlay network disabled"; exit 0; }
 
 if ! command -v tailscale >/dev/null 2>&1 || ! command -v tailscaled >/dev/null 2>&1; then
   host_file="$(mktemp)"
   trap 'rm -f "$host_file"' EXIT
   bash "$RELEASE_DIR/infra/host/detect.sh" > "$host_file"
+  # shellcheck disable=SC1090
   source "$host_file"
 
   if [[ "$SERVER_EDGE_HOST_PACKAGE_MANAGER" == apt-get && "$SERVER_EDGE_HOST_SERVICE_MANAGER" == systemd ]]; then
@@ -47,16 +50,24 @@ if command -v systemctl >/dev/null 2>&1; then
   systemctl enable --now tailscaled >/dev/null 2>&1 || true
 fi
 
+hostname_value="$SERVER_EDGE_INFRA_TAILSCALE_HOSTNAME"
+[[ "$hostname_value" != auto ]] || hostname_value="$(hostname -s)"
 auth_file="$root/secrets/infra/tailscale-auth-key"
 backend_state="$(tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null || true)"
+
 if [[ "$backend_state" == Running ]]; then
-  log "Tailscale already connected"
+  tailscale set \
+    --hostname="$hostname_value" \
+    --accept-dns="$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"
+  log "Tailscale settings reconciled: hostname=$hostname_value accept-dns=$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"
 elif [[ -s "$auth_file" ]]; then
   chown root:root "$auth_file"
   chmod 600 "$auth_file"
-  hostname="${SERVER_EDGE_TAILSCALE_HOSTNAME:-$(hostname -s)}"
-  tailscale up --auth-key="file:${auth_file}" --hostname="$hostname" --accept-dns=false
-  log "Tailscale authenticated as $hostname"
+  tailscale up \
+    --auth-key="file:${auth_file}" \
+    --hostname="$hostname_value" \
+    --accept-dns="$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"
+  log "Tailscale authenticated as $hostname_value"
 else
   log "Tailscale installed; authentication deferred (optional secret: $auth_file)"
 fi
