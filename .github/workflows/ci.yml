@@ -87,6 +87,29 @@ jobs:
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/validate-inputs.sh
           done
 
+      - name: Validate Public Edge subscription route
+        run: |
+          tmp="$(mktemp -d)"
+          sudo install -d -m 755 -o root -g root "$tmp/runtime/contracts"
+          cat <<'JSON' | sudo tee "$tmp/runtime/contracts/proxy-subscription.json" >/dev/null
+          {
+            "schema_version": 1,
+            "producer": "proxy-hub",
+            "service": "subscription-feed",
+            "network": "edge_service_proxy_public",
+            "upstream": "http://proxy-feed:8080",
+            "public_origin": "https://sub.example.com"
+          }
+          JSON
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/render-subscription-route.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/write-runtime-env.sh
+          caddy_image="$(jq -r '.components.caddy.image' manifests/versions.json)"
+          sudo docker run --rm \
+            -v "$tmp/runtime/public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+          sudo grep -q '^https://sub.example.com {' "$tmp/runtime/public-edge/Caddyfile"
+          sudo grep -q '^    reverse_proxy proxy-feed:8080$' "$tmp/runtime/public-edge/Caddyfile"
+
       - name: Validate release script permissions
         run: |
           tmp="$(mktemp -d)"
