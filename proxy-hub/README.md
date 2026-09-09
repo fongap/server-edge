@@ -107,6 +107,16 @@ SERVER_EDGE_PROXY_EGRESS_POLICY=auto|fallback|select
 
 AI Gateway、AI Workers、App Hub 等消费者不得硬编码 `7890`。
 
+## 运行 Compose
+
+Proxy Hub 不再通过多个 Compose 文件叠加端口。安装器根据已解析配置生成唯一运行文件：
+
+```text
+/opt/server-edge/runtime/proxy-hub/compose.yaml
+```
+
+Controller、Feed、可选统一出口与可选 LOCAL 的宿主端口都在这一个运行文件中明确声明，再由单次 `docker compose -f ... up` 启动。这样避免多文件 `ports` 合并差异，并使实际 HostConfig 端口映射可被 CI 和实机直接验证。
+
 ## 订阅 Feed
 
 首次安装生成 root-only Token：
@@ -116,6 +126,8 @@ AI Gateway、AI Workers、App Hub 等消费者不得硬编码 `7890`。
 ```
 
 默认 Tailnet Feed 由 `FEED_BIND` 与 `FEED_PORT` 决定。
+
+Token 轮换后，渲染器会删除旧 Token 对应的 Feed 目录，使旧订阅 URL 失效。
 
 如需公网域名，不修改 `proxy-hub.env`，而是在平台发布注册表配置：
 
