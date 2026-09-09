@@ -43,23 +43,36 @@ jobs:
           values="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source infra/scripts/load-settings.sh; printf "%s|%s|%s\n" "$SERVER_EDGE_INFRA_OVERLAY" "$SERVER_EDGE_INFRA_TAILSCALE_HOSTNAME" "$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"')"
           [[ "$values" == 'off|auto|false' ]]
 
-      - name: Validate Proxy Hub compose
-        env:
-          SERVER_EDGE_PROXY_IMAGE: metacubex/mihomo:v1.19.30
-          SERVER_EDGE_PROXY_FEED_IMAGE: busybox:1.37.0
-          SERVER_EDGE_PROXY_CONFIG: /tmp/server-edge-proxy-config.yaml
-          SERVER_EDGE_PROXY_STATE: /tmp/server-edge-proxy-state
-          SERVER_EDGE_PROXY_FEED_ROOT: /tmp/server-edge-proxy-feed
-          SERVER_EDGE_PROXY_FEED_BIND_IP: 127.0.0.1
-          SERVER_EDGE_PROXY_CONTROLLER_BIND_IP: 127.0.0.1
-          SERVER_EDGE_PROXY_NODE_BIND_IP: 127.0.0.1
-          SERVER_EDGE_PROXY_EGRESS_BIND_IP: 127.0.0.1
-          SERVER_EDGE_PROXY_EGRESS_PORT: 7890
-          SERVER_EDGE_PROXY_LOCAL_NODE_PORT: 7891
-          SERVER_EDGE_PROXY_FEED_PORT: 8780
-          SERVER_EDGE_PROXY_CONTROLLER_PORT: 9090
+      - name: Validate rendered Proxy Hub compose
         run: |
-          docker compose -f proxy-hub/compose.yaml -f proxy-hub/compose.egress.yaml -f proxy-hub/compose.local-node.yaml config >/dev/null
+          tmp="$(mktemp -d)"
+          runtime="$tmp/runtime/proxy-hub"
+          state="$tmp/state/proxy-hub"
+          feed="$state/feed"
+          sudo install -d -m 700 -o root -g root "$runtime" "$state" "$feed"
+          proxy_image="$(jq -r '.components.mihomo.image' manifests/versions.json)"
+          feed_image="$(jq -r '.components.busybox.image' manifests/versions.json)"
+          cat <<EOF | sudo tee "$runtime/compose.env" >/dev/null
+          SERVER_EDGE_PROXY_IMAGE=$proxy_image
+          SERVER_EDGE_PROXY_FEED_IMAGE=$feed_image
+          SERVER_EDGE_PROXY_CONFIG=$runtime/config.yaml
+          SERVER_EDGE_PROXY_STATE=$state
+          SERVER_EDGE_PROXY_FEED_ROOT=$feed
+          SERVER_EDGE_PROXY_FEED_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_CONTROLLER_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_NODE_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_EGRESS_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=true
+          SERVER_EDGE_PROXY_EGRESS_ENABLED=true
+          SERVER_EDGE_PROXY_EGRESS_PORT=17890
+          SERVER_EDGE_PROXY_LOCAL_NODE_PORT=17891
+          SERVER_EDGE_PROXY_FEED_PORT=18780
+          SERVER_EDGE_PROXY_CONTROLLER_PORT=19090
+          EOF
+          printf '%s\n' 'mode: rule' | sudo tee "$runtime/config.yaml" >/dev/null
+          printf '%s\n' 'Not Found' | sudo tee "$feed/index.html" >/dev/null
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-runtime-compose.sh
+          sudo docker compose -f "$runtime/compose.yaml" config >/dev/null
 
       - name: Require node aggregation
         run: |
@@ -112,6 +125,8 @@ jobs:
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-public-contract.sh
             sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
+            sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-runtime-compose.sh
+            sudo docker compose -f "$tmp/runtime/proxy-hub/compose.yaml" config >/dev/null
             sudo docker run --rm -v "$tmp/runtime/proxy-hub/config.yaml:/etc/mihomo/config.yaml:ro" -v "$tmp/state/proxy-hub:/var/lib/mihomo" "$image" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
             sudo grep -q '^mixed-port: 17890$' "$tmp/runtime/proxy-hub/config.yaml"
             sudo grep -q '^external-controller: "0.0.0.0:19090"$' "$tmp/runtime/proxy-hub/config.yaml"
@@ -150,10 +165,13 @@ jobs:
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-config.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/write-egress-contract.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-runtime-compose.sh
           if sudo grep -q '^mixed-port:' "$tmp/runtime/proxy-hub/config.yaml"; then echo 'ERROR: disabled egress rendered mixed-port' >&2; exit 1; fi
           if sudo grep -q '^  - name: local-node$' "$tmp/runtime/proxy-hub/config.yaml"; then echo 'ERROR: disabled LOCAL node rendered listener' >&2; exit 1; fi
           feed="$tmp/state/proxy-hub/feed/$(printf '%048d' 1)/mihomo.yaml"
           if sudo grep -q '^  - name: LOCAL$' "$feed"; then echo 'ERROR: disabled LOCAL node was published' >&2; exit 1; fi
+          if sudo grep -q 'published: "7890"' "$tmp/runtime/proxy-hub/compose.yaml"; then echo 'ERROR: disabled egress was published' >&2; exit 1; fi
+          if sudo grep -q 'published: "7891"' "$tmp/runtime/proxy-hub/compose.yaml"; then echo 'ERROR: disabled LOCAL node was published by Compose' >&2; exit 1; fi
           sudo jq -e '.enabled == false and .endpoint == null' "$tmp/runtime/contracts/proxy-egress.json" >/dev/null
 
       - name: Validate Public Edge publication registry
