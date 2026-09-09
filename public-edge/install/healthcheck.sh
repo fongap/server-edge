@@ -9,6 +9,7 @@ root="${SERVER_EDGE_ROOT:-/opt/server-edge}"
 export SERVER_EDGE_ROOT="$root"
 runtime_dir="$root/runtime/public-edge"
 env_file="$runtime_dir/compose.env"
+source "$RELEASE_DIR/public-edge/scripts/load-settings.sh"
 source "$RELEASE_DIR/public-edge/scripts/load-subscription-contract.sh"
 
 if [[ "$SERVER_EDGE_PUBLIC_ACTIVE" != true ]]; then
@@ -30,8 +31,18 @@ docker compose --env-file "$env_file" -f "$RELEASE_DIR/public-edge/compose.yaml"
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null \
   || die "public-edge Caddy config validation failed"
 
-docker port "$container_id" 80/tcp >/dev/null 2>&1 || die "public-edge port 80 is not published"
-docker port "$container_id" 443/tcp >/dev/null 2>&1 || die "public-edge port 443 is not published"
+inspect="$(docker inspect "$container_id")"
+for spec in '80/tcp:80' '443/tcp:443' '443/udp:443'; do
+  container_port="${spec%%:*}"
+  host_port="${spec#*:}"
+  jq -e \
+    --arg key "$container_port" \
+    --arg ip "$SERVER_EDGE_PUBLIC_BIND_IP" \
+    --arg port "$host_port" \
+    '.[0].NetworkSettings.Ports[$key] | any(.[]; .HostIp == $ip and .HostPort == $port)' \
+    <<<"$inspect" >/dev/null \
+    || die "public-edge expected binding is missing: $SERVER_EDGE_PUBLIC_BIND_IP:$host_port -> $container_port"
+done
 
 feed_image="$(jq -r '.components.busybox.image // empty' "$RELEASE_DIR/manifests/versions.json")"
 [[ -n "$feed_image" ]] || die "BusyBox image missing for public-edge upstream check"
@@ -39,4 +50,4 @@ docker run --rm --network edge_service_proxy_public "$feed_image" \
   wget -q -O /dev/null http://proxy-feed:8080/index.html \
   || die "public-edge cannot reach proxy subscription feed"
 
-log "public-edge health check passed: host=$SERVER_EDGE_PUBLIC_HOST"
+log "public-edge health check passed: host=$SERVER_EDGE_PUBLIC_HOST bind=$SERVER_EDGE_PUBLIC_BIND_IP"
