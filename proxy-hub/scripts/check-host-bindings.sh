@@ -16,23 +16,28 @@ need_cmd ss
 
 project="server-edge-proxy-hub"
 
-owned_by_project() {
-  local ip="$1" port="$2"
-  local id
+docker_binding_owner() {
+  local proto="$1" ip="$2" port="$3"
+  local id inspect name owner_project
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
-    if docker inspect "$id" | jq -e \
+    inspect="$(docker inspect "$id")"
+    if jq -e \
+      --arg proto "$proto" \
       --arg ip "$ip" \
       --arg port "$port" \
-      '.[0].NetworkSettings.Ports // {} | to_entries | any((.value // [])[]?; .HostIp == $ip and .HostPort == $port)' \
-      >/dev/null 2>&1; then
+      '[.[0].NetworkSettings.Ports // {} | to_entries[] | select(.key | endswith("/" + $proto)) | (.value // [])[]? | select((.HostIp == $ip or .HostIp == "0.0.0.0") and .HostPort == $port)] | length > 0' \
+      <<<"$inspect" >/dev/null 2>&1; then
+      name="$(jq -r '.[0].Name | ltrimstr("/")' <<<"$inspect")"
+      owner_project="$(jq -r '.[0].Config.Labels["com.docker.compose.project"] // empty' <<<"$inspect")"
+      printf '%s|%s\n' "$owner_project" "$name"
       return 0
     fi
-  done < <(docker ps --filter "label=com.docker.compose.project=$project" -q)
+  done < <(docker ps -q)
   return 1
 }
 
-binding_in_use() {
+socket_binding_in_use() {
   local proto="$1" ip="$2" port="$3"
   local flags output escaped_ip
   case "$proto" in
@@ -46,24 +51,34 @@ binding_in_use() {
   grep -Eq "[[:space:]](${escaped_ip}|0\\.0\\.0\\.0|\\*):${port}[[:space:]]" <<<"$output"
 }
 
+show_socket_owner() {
+  local proto="$1" port="$2"
+  if [[ "$proto" == tcp ]]; then
+    ss -H -ltnp "sport = :$port" 2>/dev/null || true
+  else
+    ss -H -lunp "sport = :$port" 2>/dev/null || true
+  fi
+}
+
 check_binding() {
   local label="$1" proto="$2" ip="$3" port="$4"
-  if ! binding_in_use "$proto" "$ip" "$port"; then
-    return 0
-  fi
-  if owned_by_project "$ip" "$port"; then
-    log "host binding already owned by current Proxy Hub: $label $proto://$ip:$port"
-    return 0
+  local docker_owner owner_project owner_name
+
+  docker_owner="$(docker_binding_owner "$proto" "$ip" "$port" || true)"
+  if [[ -n "$docker_owner" ]]; then
+    owner_project="${docker_owner%%|*}"
+    owner_name="${docker_owner#*|}"
+    if [[ "$owner_project" == "$project" ]]; then
+      log "host binding already owned by current Proxy Hub: $label $proto://$ip:$port ($owner_name)"
+      return 0
+    fi
+    die "host binding conflict: $label requires $proto://$ip:$port; Docker container $owner_name already publishes this binding. Remove the conflicting legacy service or change the corresponding /opt/server-edge/config/proxy-hub.env port"
   fi
 
-  local details
-  if [[ "$proto" == tcp ]]; then
-    details="$(ss -H -ltnp "sport = :$port" 2>/dev/null || true)"
-  else
-    details="$(ss -H -lunp "sport = :$port" 2>/dev/null || true)"
+  if socket_binding_in_use "$proto" "$ip" "$port"; then
+    show_socket_owner "$proto" "$port" >&2
+    die "host binding conflict: $label requires $proto://$ip:$port; a host process already owns this binding. Stop the conflicting legacy service or change the corresponding /opt/server-edge/config/proxy-hub.env port"
   fi
-  printf '%s\n' "$details" >&2
-  die "host binding conflict: $label requires $proto://$ip:$port; change the corresponding /opt/server-edge/config/proxy-hub.env port or remove the conflicting legacy service"
 }
 
 check_binding controller tcp "$SERVER_EDGE_PROXY_CONTROLLER_BIND_IP" "$SERVER_EDGE_PROXY_CONTROLLER_PORT"
