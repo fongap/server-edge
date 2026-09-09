@@ -151,7 +151,9 @@ Proxy Hub 只写出内部服务契约：
 9090  Controller
 ```
 
-四个端口都可通过实例配置调整。
+四个端口都可通过实例配置调整。Controller 默认只绑定 Tailnet，不发布公网。
+
+安装器在启动容器前检查实际宿主绑定。当前 `server-edge-proxy-hub` 自己占用的绑定允许幂等重装；若同一 IP/端口被其他 Docker 容器或宿主进程占用，则在 `docker compose up` 前明确拒绝，并提示修改对应实例端口或清理旧服务。
 
 ## 数据边界
 
