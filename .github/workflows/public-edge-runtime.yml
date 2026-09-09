@@ -1,0 +1,125 @@
+name: Public Edge Runtime Safety
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Public Edge config lifecycle
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' public-edge"
+          sudo grep -q '^SERVER_EDGE_PUBLIC_BIND_IP=0.0.0.0$' "$tmp/config/public-edge.env"
+          printf '%s\n' 'SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1' | sudo tee "$tmp/config/public-edge.env" >/dev/null
+          sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' public-edge"
+          sudo grep -q '^SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1$' "$tmp/config/public-edge.env"
+          value="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source public-edge/scripts/load-settings.sh; printf "%s\n" "$SERVER_EDGE_PUBLIC_BIND_IP"')"
+          [[ "$value" == '127.0.0.1' ]]
+
+      - name: Validate Public Edge binding ownership
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          sudo install -d -m 700 -o root -g root "$tmp/runtime/public-edge"
+          cat <<'EOF' | sudo tee "$tmp/runtime/public-edge/compose.env" >/dev/null
+          SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1
+          EOF
+
+          image="$(jq -r '.components.busybox.image' manifests/versions.json)"
+          docker pull "$image" >/dev/null
+
+          docker run -d --name public-edge-preflight-external \
+            -p 127.0.0.1:80:8080 \
+            "$image" httpd -f -p 8080 >/dev/null
+          if sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/check-host-bindings.sh; then
+            echo 'ERROR: external HTTP binding was not rejected' >&2
+            exit 1
+          fi
+          docker rm -f public-edge-preflight-external >/dev/null
+
+          docker run -d --name public-edge-preflight-owned \
+            --label com.docker.compose.project=server-edge-public-edge \
+            -p 127.0.0.1:80:8080 \
+            "$image" httpd -f -p 8080 >/dev/null
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/check-host-bindings.sh
+          docker rm -f public-edge-preflight-owned >/dev/null
+
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/check-host-bindings.sh
+
+      - name: Validate Public Edge runtime
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          sudo install -d -m 755 -o root -g root "$tmp/config" "$tmp/runtime/contracts"
+          sudo install -d -m 700 -o root -g root "$tmp/state/proxy-hub/feed/test" "$tmp/runtime/public-edge"
+
+          cat <<'JSON' | sudo tee "$tmp/config/publications.json" >/dev/null
+          {"schema_version":1,"services":{"proxy-subscription":{"origin":"https://sub.example.com"}}}
+          JSON
+          cat <<'EOF' | sudo tee "$tmp/config/public-edge.env" >/dev/null
+          SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1
+          EOF
+          cat <<'JSON' | sudo tee "$tmp/runtime/contracts/proxy-subscription.json" >/dev/null
+          {"schema_version":1,"producer":"proxy-hub","service":"subscription-feed","publication_key":"proxy-subscription","network":"edge_service_proxy_public","upstream":"http://proxy-feed:8080"}
+          JSON
+          printf '%s\n' 'Feed OK' | sudo tee "$tmp/state/proxy-hub/feed/test/index.html" >/dev/null
+
+          feed_image="$(jq -r '.components.busybox.image' manifests/versions.json)"
+          caddy_image="$(jq -r '.components.caddy.image' manifests/versions.json)"
+          docker pull "$feed_image" >/dev/null
+          docker pull "$caddy_image" >/dev/null
+          docker network create --internal edge_service_proxy_public >/dev/null
+          docker run -d --name public-edge-upstream \
+            --network edge_service_proxy_public \
+            --network-alias proxy-feed \
+            -v "$tmp/state/proxy-hub/feed/test:/www:ro" \
+            "$feed_image" httpd -f -p 8080 -h /www >/dev/null
+
+          cleanup() {
+            if [[ -s "$tmp/runtime/public-edge/compose.env" ]]; then
+              sudo docker compose --env-file "$tmp/runtime/public-edge/compose.env" -f public-edge/compose.yaml down --remove-orphans >/dev/null 2>&1 || true
+            fi
+            docker rm -f public-edge-upstream >/dev/null 2>&1 || true
+            docker network rm edge_service_proxy_public >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/render-subscription-route.sh
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/write-runtime-env.sh
+          sudo docker compose --env-file "$tmp/runtime/public-edge/compose.env" -f public-edge/compose.yaml config >/dev/null
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/scripts/check-host-bindings.sh
+          sudo docker run --rm -v "$tmp/runtime/public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+
+          sudo docker compose --env-file "$tmp/runtime/public-edge/compose.env" -f public-edge/compose.yaml up -d --force-recreate
+          caddy_id="$(sudo docker compose --env-file "$tmp/runtime/public-edge/compose.env" -f public-edge/compose.yaml ps -q caddy)"
+          sudo docker inspect "$caddy_id" | jq -e '
+            .[0].NetworkSettings.Ports["80/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"80"} and
+            .[0].NetworkSettings.Ports["443/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"443"} and
+            .[0].NetworkSettings.Ports["443/udp"][0] == {HostIp:"127.0.0.1",HostPort:"443"}
+          ' >/dev/null
+
+          sudo SERVER_EDGE_ROOT="$tmp" bash public-edge/install/healthcheck.sh
+
+          for _ in {1..20}; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: sub.example.com' http://127.0.0.1/ || true)"
+            if [[ "$code" == 308 || "$code" == 301 ]]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'ERROR: Public Edge HTTP entrypoint is not reachable' >&2
+          exit 1
