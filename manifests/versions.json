@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "server_edge": "0.1.4",
+  "server_edge": "0.1.5",
   "components": {
     "mihomo": {
       "version": "1.19.30",
