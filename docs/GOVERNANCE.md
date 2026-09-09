@@ -277,6 +277,8 @@ Watchdog/Autoheal 不是默认组件。只有真实服务无法通过自身重�
 
 生产安装必须锁定 Tag、Release 或 Commit SHA，不直接追随 `main` 或 `latest`。
 
+Server Edge 版本号变更属于独立发布决策，不由开发阶段、里程碑、CI 通过或实机验证自动触发。任何对 `VERSION` 或 `manifests/versions.json` 中 `server_edge` 的修改，必须先提出明确的目标版本建议，并取得项目所有者明确批准后方可执行；未获得批准时，开发、修复和验证均保持现有版本号不变。
+
 安装器只负责引导、Host 检测、校验和调用模块钩子，不允许演化为包含全部业务逻辑的巨型 Shell。
 
 Patch 是正式能力，不等于 `git pull`。Patch 必须声明：来源版本、目标版本、影响模块、数据迁移、备份要求和回滚条件。
