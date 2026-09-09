@@ -1,0 +1,58 @@
+name: Proxy Binding Preflight
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Docker binding ownership
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          sudo install -d -m 700 -o root -g root "$tmp/runtime/proxy-hub"
+          cat <<'EOF' | sudo tee "$tmp/runtime/proxy-hub/compose.env" >/dev/null
+          SERVER_EDGE_PROXY_CONTROLLER_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_CONTROLLER_PORT=19090
+          SERVER_EDGE_PROXY_FEED_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_FEED_PORT=18780
+          SERVER_EDGE_PROXY_NODE_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_LOCAL_NODE_PORT=17891
+          SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false
+          SERVER_EDGE_PROXY_EGRESS_BIND_IP=127.0.0.1
+          SERVER_EDGE_PROXY_EGRESS_PORT=17890
+          SERVER_EDGE_PROXY_EGRESS_ENABLED=false
+          EOF
+
+          image="$(jq -r '.components.busybox.image' manifests/versions.json)"
+          docker pull "$image" >/dev/null
+
+          docker run -d --name preflight-external \
+            -p 127.0.0.1:19090:8080 \
+            "$image" httpd -f -p 8080 >/dev/null
+          if sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/check-host-bindings.sh; then
+            echo 'ERROR: external Docker binding was not rejected' >&2
+            exit 1
+          fi
+          docker rm -f preflight-external >/dev/null
+
+          docker run -d --name preflight-owned \
+            --label com.docker.compose.project=server-edge-proxy-hub \
+            -p 127.0.0.1:19090:8080 \
+            "$image" httpd -f -p 8080 >/dev/null
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/check-host-bindings.sh
+          docker rm -f preflight-owned >/dev/null
+
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/check-host-bindings.sh
