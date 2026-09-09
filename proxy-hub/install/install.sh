@@ -49,6 +49,7 @@ source "$env_file"
 proxy_compose_files "$RELEASE_DIR" "$SERVER_EDGE_PROXY_EGRESS_ENABLED" "$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED"
 
 docker compose --env-file "$env_file" "${PROXY_COMPOSE_ARGS[@]}" config >/dev/null
+bash "$RELEASE_DIR/proxy-hub/scripts/check-host-bindings.sh"
 docker compose --env-file "$env_file" "${PROXY_COMPOSE_ARGS[@]}" pull >/dev/null
 
 docker run --rm \
