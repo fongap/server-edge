@@ -6,9 +6,9 @@ services:
     restart: unless-stopped
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     ports:
-      - "80:80/tcp"
-      - "443:443/tcp"
-      - "443:443/udp"
+      - "${SERVER_EDGE_PUBLIC_BIND_IP:?SERVER_EDGE_PUBLIC_BIND_IP is required}:80:80/tcp"
+      - "${SERVER_EDGE_PUBLIC_BIND_IP:?SERVER_EDGE_PUBLIC_BIND_IP is required}:443:443/tcp"
+      - "${SERVER_EDGE_PUBLIC_BIND_IP:?SERVER_EDGE_PUBLIC_BIND_IP is required}:443:443/udp"
     volumes:
       - ${SERVER_EDGE_PUBLIC_CADDYFILE:?SERVER_EDGE_PUBLIC_CADDYFILE is required}:/etc/caddy/Caddyfile:ro
       - ${SERVER_EDGE_PUBLIC_DATA:?SERVER_EDGE_PUBLIC_DATA is required}:/data
