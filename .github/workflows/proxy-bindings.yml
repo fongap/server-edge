@@ -1,4 +1,4 @@
-name: Proxy Binding Preflight
+name: Proxy Hub Runtime Safety
 
 on:
   push:
@@ -56,3 +56,35 @@ jobs:
           docker rm -f preflight-owned >/dev/null
 
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/check-host-bindings.sh
+
+      - name: Validate subscription token revocation
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          current="$(printf '1%.0s' {1..48})"
+          stale="$(printf '2%.0s' {1..48})"
+          sudo install -d -m 700 -o root -g root \
+            "$tmp/runtime/proxy-hub" \
+            "$tmp/secrets/proxy-hub/providers" \
+            "$tmp/state/proxy-hub/feed/$stale" \
+            "$tmp/state/proxy-hub/feed/keep-me"
+          printf '%s\n' 'https://example.com/subscription' | sudo tee "$tmp/secrets/proxy-hub/providers/primary.url" >/dev/null
+          cat <<EOF | sudo tee "$tmp/runtime/proxy-hub/compose.env" >/dev/null
+          SERVER_EDGE_PROXY_FEED_TOKEN=$current
+          SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED=false
+          SERVER_EDGE_PROXY_LOCAL_NODE_PUBLISH=false
+          SERVER_EDGE_PROXY_NODE_HOST=127.0.0.1
+          SERVER_EDGE_PROXY_LOCAL_NODE_PORT=17891
+          SERVER_EDGE_PROXY_SUBSCRIPTION_ORIGIN=http://127.0.0.1:18780
+          SERVER_EDGE_PROXY_PROVIDER_INTERVAL=21600
+          SERVER_EDGE_PROXY_HEALTH_URL=https://cp.cloudflare.com
+          SERVER_EDGE_PROXY_HEALTH_INTERVAL=600
+          SERVER_EDGE_PROXY_PROBE_INTERVAL=300
+          SERVER_EDGE_PROXY_HEALTH_TIMEOUT=5000
+          SERVER_EDGE_PROXY_AUTO_TOLERANCE=100
+          EOF
+
+          sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-feed.sh
+          sudo test -f "$tmp/state/proxy-hub/feed/$current/mihomo.yaml"
+          sudo test ! -e "$tmp/state/proxy-hub/feed/$stale"
+          sudo test -d "$tmp/state/proxy-hub/feed/keep-me"
