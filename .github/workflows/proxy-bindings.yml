@@ -126,19 +126,17 @@ jobs:
           rules:
             - MATCH,DIRECT
           YAML
-          printf '%s\n' 'Not Found' | sudo tee "$feed/index.html" >/dev/null
+          printf '%s\n' 'Feed OK' | sudo tee "$feed/index.html" >/dev/null
 
           sudo SERVER_EDGE_ROOT="$tmp" bash proxy-hub/scripts/render-runtime-compose.sh
           sudo docker compose -f "$runtime/compose.yaml" config >/dev/null
 
-          for network in edge_egress_ai edge_egress_workers edge_service_proxy_public; do
-            docker network create "$network" >/dev/null
-          done
+          docker network create edge_egress_ai >/dev/null
+          docker network create edge_egress_workers >/dev/null
+          docker network create --internal edge_service_proxy_public >/dev/null
           cleanup() {
             sudo docker compose -f "$runtime/compose.yaml" down --remove-orphans >/dev/null 2>&1 || true
-            for network in edge_egress_ai edge_egress_workers edge_service_proxy_public; do
-              docker network rm "$network" >/dev/null 2>&1 || true
-            done
+            docker network rm edge_egress_ai edge_egress_workers edge_service_proxy_public >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
 
@@ -147,12 +145,22 @@ jobs:
           feed_id="$(sudo docker compose -f "$runtime/compose.yaml" ps -q feed)"
 
           sudo docker inspect "$proxy_id" | jq -e '
-            .[0].HostConfig.PortBindings["39090/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"39090"} and
-            .[0].HostConfig.PortBindings["37890/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"37890"} and
-            .[0].HostConfig.PortBindings["37890/udp"][0] == {HostIp:"127.0.0.1",HostPort:"37890"} and
-            .[0].HostConfig.PortBindings["37891/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"37891"} and
-            .[0].HostConfig.PortBindings["37891/udp"][0] == {HostIp:"127.0.0.1",HostPort:"37891"}
+            .[0].NetworkSettings.Ports["39090/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"39090"} and
+            .[0].NetworkSettings.Ports["37890/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"37890"} and
+            .[0].NetworkSettings.Ports["37890/udp"][0] == {HostIp:"127.0.0.1",HostPort:"37890"} and
+            .[0].NetworkSettings.Ports["37891/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"37891"} and
+            .[0].NetworkSettings.Ports["37891/udp"][0] == {HostIp:"127.0.0.1",HostPort:"37891"}
           ' >/dev/null
           sudo docker inspect "$feed_id" | jq -e '
-            .[0].HostConfig.PortBindings["8080/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"38780"}
+            .[0].NetworkSettings.Ports["8080/tcp"][0] == {HostIp:"127.0.0.1",HostPort:"38780"} and
+            (.[0].NetworkSettings.Networks | has("server-edge-proxy-hub_host_publish"))
           ' >/dev/null
+
+          for _ in {1..20}; do
+            if curl -fsS --max-time 1 http://127.0.0.1:38780/ | grep -q '^Feed OK$'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'ERROR: Feed host publishing is not reachable' >&2
+          exit 1
