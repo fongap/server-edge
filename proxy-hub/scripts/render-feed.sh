@@ -21,6 +21,14 @@ mkdir -p "$feed_dir/providers"
 chown -R root:root "$feed_root"
 chmod 700 "$feed_root" "$feed_dir"
 chmod 755 "$feed_dir/providers"
+
+while IFS= read -r entry; do
+  [[ "$entry" =~ ^[A-Fa-f0-9]{48}$ ]] || continue
+  [[ "$entry" == "$SERVER_EDGE_PROXY_FEED_TOKEN" ]] && continue
+  rm -rf -- "$feed_root/$entry"
+  log "revoked stale subscription feed token"
+done < <(find "$feed_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort)
+
 printf '%s\n' 'Not Found' > "$feed_root/index.html"
 printf '%s\n' 'Not Found' > "$feed_dir/index.html"
 chmod 644 "$feed_root/index.html" "$feed_dir/index.html"
