@@ -38,7 +38,25 @@
 
 因此域名修改不需要修改 Proxy Hub、AI Gateway 或其他业务模块配置。
 
-## M2 最小实现
+## 实例配置
+
+Public Edge 自身只保存部署参数，不保存公网域名：
+
+```text
+public-edge/config/defaults.env
+        ↓
+/opt/server-edge/config/public-edge.env
+```
+
+当前实例参数：
+
+```text
+SERVER_EDGE_PUBLIC_BIND_IP=0.0.0.0
+```
+
+`80/tcp`、`443/tcp`、`443/udp` 是 Public Edge 的平台入口契约，不作为普通实例端口参数。需要限制监听接口时，只修改 `SERVER_EDGE_PUBLIC_BIND_IP`。
+
+## 当前最小实现
 
 当前只实现 `proxy-subscription` 的最小公网路由，使用 Caddy `2.11.4-alpine`。
 
@@ -67,13 +85,16 @@ Public Edge / Caddy
 proxy-feed:8080
 ```
 
+安装前会检查 80/443 的宿主绑定。如果旧 Caddy、Nginx、Docker 容器或其他进程仍占用目标地址，安装会在启动 Caddy 前明确失败，不会覆盖旧服务。
+
 ## 边界
 
 - 只有 Public Edge 发布公网 `80/443`；
 - Public Edge 不读取其他模块 `.env`、`state/` 或 `secrets/`；
 - 只消费运行契约与平台发布注册表；
 - Token、Password、Private URL 不进入跨模块契约；
-- Caddy 不挂载 Docker Socket，不使用 `privileged` 或 host network。
+- Caddy 不挂载 Docker Socket，不使用 `privileged` 或 host network；
+- `edge_service_proxy_public` 继续保持 internal；Caddy 通过独立 outbound bridge 获取证书和访问外网。
 
 ## 外部前置
 
