@@ -58,5 +58,5 @@ docker run --rm \
   -v "$state_dir:/var/lib/mihomo" \
   "$SERVER_EDGE_PROXY_IMAGE" -t -d /var/lib/mihomo -f /etc/mihomo/config.yaml >/dev/null
 
-docker compose -f "$compose_file" up -d --remove-orphans
+docker compose -f "$compose_file" up -d --remove-orphans --force-recreate
 log "proxy-hub installed: aggregation=required local-node=$SERVER_EDGE_PROXY_LOCAL_NODE_ENABLED egress=$SERVER_EDGE_PROXY_EGRESS_ENABLED/$SERVER_EDGE_PROXY_EGRESS_POLICY"
