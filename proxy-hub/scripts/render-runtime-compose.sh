@@ -112,6 +112,7 @@ cat >> "$tmp" <<EOF
     networks:
       edge_service_proxy_public:
         aliases: [proxy-feed]
+      host_publish: {}
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -128,6 +129,8 @@ networks:
   edge_service_proxy_public:
     external: true
   outbound:
+    driver: bridge
+  host_publish:
     driver: bridge
 EOF
 
