@@ -7,10 +7,12 @@ source "$HERE/lib/config.sh"
 
 root=/opt/server-edge
 profile_rel=profiles/default.json
+instance_source=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) root=$2; shift 2 ;;
     --profile) profile_rel=$2; shift 2 ;;
+    --instance-source) instance_source=$2; shift 2 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -25,6 +27,11 @@ profile_enabled "$profile" infra || die "infra must be enabled"
 
 mkdir -p "$root"/{config,state,secrets,runtime,backups,shared/assets,releases}
 chmod 700 "$root/secrets"
+
+if [[ -n "$instance_source" ]]; then
+  bash "$HERE/configure.sh" --root "$root" --source "$instance_source"
+fi
+
 ensure_platform_config "$RELEASE_DIR" "$root"
 bash "$HERE/validate.sh"
 

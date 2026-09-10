@@ -23,7 +23,12 @@ jobs:
           set -Eeuo pipefail
           tmp="$(mktemp -d)"
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' public-edge"
-          sudo grep -q '^SERVER_EDGE_PUBLIC_BIND_IP=0.0.0.0$' "$tmp/config/public-edge.env"
+          if sudo grep -q '^SERVER_EDGE_PUBLIC_BIND_IP=' "$tmp/config/public-edge.env"; then
+            echo 'ERROR: Public Edge instance override copied release defaults' >&2
+            exit 1
+          fi
+          default_value="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source public-edge/scripts/load-settings.sh; printf "%s\n" "$SERVER_EDGE_PUBLIC_BIND_IP"')"
+          [[ "$default_value" == '0.0.0.0' ]]
           printf '%s\n' 'SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1' | sudo tee "$tmp/config/public-edge.env" >/dev/null
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' public-edge"
           sudo grep -q '^SERVER_EDGE_PUBLIC_BIND_IP=127.0.0.1$' "$tmp/config/public-edge.env"

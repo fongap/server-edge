@@ -5,12 +5,14 @@ repo=""
 ref=""
 root=/opt/server-edge
 profile=profiles/default.json
+instance_source=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo) repo=$2; shift 2 ;;
     --ref) ref=$2; shift 2 ;;
     --root) root=$2; shift 2 ;;
     --profile) profile=$2; shift 2 ;;
+    --instance-source) instance_source=$2; shift 2 ;;
     *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -19,6 +21,7 @@ done
 [[ $EUID -eq 0 ]] || { echo 'ERROR: run bootstrap with sudo/root' >&2; exit 1; }
 command -v curl >/dev/null || { echo 'ERROR: curl is required to fetch the release' >&2; exit 1; }
 command -v tar >/dev/null || { echo 'ERROR: tar is required to unpack the release' >&2; exit 1; }
+[[ -z "$instance_source" || -d "$instance_source" ]] || { echo 'ERROR: --instance-source must be an existing local directory' >&2; exit 2; }
 
 mkdir -p "$root/releases" "$root/runtime"
 archive="$(mktemp)"; tmp="$(mktemp -d)"
@@ -39,7 +42,9 @@ mv "$source_dir" "$release_dir"
 source "$release_dir/install/lib/common.sh"
 ensure_release_script_modes "$release_dir"
 
-bash "$release_dir/install/install.sh" --root "$root" --profile "$profile"
+install_args=(--root "$root" --profile "$profile")
+[[ -z "$instance_source" ]] || install_args+=(--instance-source "$instance_source")
+bash "$release_dir/install/install.sh" "${install_args[@]}"
 ln -sfn "$release_dir" "$root/current.next"
 mv -Tf "$root/current.next" "$root/current"
 cat > "$root/runtime/install.env" <<META
