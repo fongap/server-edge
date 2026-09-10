@@ -106,7 +106,7 @@ infra/network/overlay
 
 ```text
 auto       默认；允许未连接状态继续完成基础 Infra
- off       不启用 Overlay
+off        不启用 Overlay
 required   必须安装并处于可用连接状态
 ```
 
