@@ -17,17 +17,23 @@ done
 
 [[ $EUID -eq 0 ]] || die "configure must run as root"
 [[ -n "$source_dir" ]] || die "--source is required"
-[[ -d "$source_dir" ]] || die "instance source not found: $source_dir"
+[[ -d "$source_dir" && ! -L "$source_dir" ]] || die "instance source must be a real directory: $source_dir"
 need_cmd jq
 
 config_source="$source_dir/config"
 secrets_source="$source_dir/secrets"
 manifest="$root/runtime/config-source.manifest"
 
+for path in "$root/config" "$root/secrets" "$root/runtime" "$root/backups"; do
+  [[ ! -L "$path" ]] || die "managed path must not be a symlink: $path"
+done
 mkdir -p "$root/config" "$root/secrets" "$root/runtime" "$root/backups/configure"
 chown root:root "$root/config" "$root/secrets" "$root/runtime" "$root/backups/configure"
 chmod 755 "$root/config"
 chmod 700 "$root/secrets" "$root/backups/configure"
+
+existing_link="$(find -P "$root/config" "$root/secrets" -type l -print -quit 2>/dev/null || true)"
+[[ -z "$existing_link" ]] || die "managed instance tree must not contain symlinks: $existing_link"
 
 validate_tree() {
   local base=$1 kind=$2 path rel
@@ -66,42 +72,74 @@ if [[ -d "$config_source" ]]; then
 fi
 
 new_manifest="$(mktemp)"
-cleanup_manifest() { rm -f "$new_manifest"; }
-trap cleanup_manifest EXIT
+affected="$(mktemp)"
+cleanup_files() { rm -f "$new_manifest" "$affected"; }
+trap cleanup_files EXIT
 
-if [[ -d "$config_source" ]]; then
-  while IFS= read -r -d '' path; do
-    printf 'config/%s\n' "${path#"$config_source"/}"
-  done < <(find -P "$config_source" -type f -print0 | sort -z)
-fi
-if [[ -d "$secrets_source" ]]; then
-  while IFS= read -r -d '' path; do
-    printf 'secrets/%s\n' "${path#"$secrets_source"/}"
-  done < <(find -P "$secrets_source" -type f -print0 | sort -z)
-fi > "$new_manifest"
-
-backup="$root/backups/configure/$(date -u +%Y%m%dT%H%M%SZ)-$$"
-mkdir -p "$backup"
-chmod 700 "$backup"
-
-backup_target() {
-  local rel=$1 target="$root/$1"
-  [[ -e "$target" ]] || return 0
-  mkdir -p "$backup/$(dirname "$rel")"
-  cp -a "$target" "$backup/$rel"
-}
+{
+  if [[ -d "$config_source" ]]; then
+    while IFS= read -r -d '' path; do
+      printf 'config/%s\n' "${path#"$config_source"/}"
+    done < <(find -P "$config_source" -type f -print0 | sort -z)
+  fi
+  if [[ -d "$secrets_source" ]]; then
+    while IFS= read -r -d '' path; do
+      printf 'secrets/%s\n' "${path#"$secrets_source"/}"
+    done < <(find -P "$secrets_source" -type f -print0 | sort -z)
+  fi
+} > "$new_manifest"
 
 if [[ -f "$manifest" ]]; then
   while IFS= read -r rel; do
     [[ -n "$rel" ]] || continue
     [[ "$rel" =~ ^(config|secrets)/[A-Za-z0-9._/-]+$ ]] || die "invalid previous managed path: $rel"
-    backup_target "$rel"
-  done < "$manifest"
+    printf '%s\n' "$rel"
+  done < "$manifest" >> "$affected"
 fi
+cat "$new_manifest" >> "$affected"
+sort -u -o "$affected" "$affected"
+
+backup="$root/backups/configure/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+mkdir -p "$backup"
+chmod 700 "$backup"
+restore_manifest="$backup/restore.manifest"
+: > "$restore_manifest"
+chmod 600 "$restore_manifest"
+
 while IFS= read -r rel; do
   [[ -n "$rel" ]] || continue
-  backup_target "$rel"
-done < "$new_manifest"
+  target="$root/$rel"
+  [[ ! -L "$target" ]] || die "managed target must not be a symlink: $target"
+  if [[ -e "$target" ]]; then
+    [[ -f "$target" ]] || die "managed target must be a regular file: $target"
+    mkdir -p "$backup/$(dirname "$rel")"
+    cp -a "$target" "$backup/$rel"
+    printf 'existing\t%s\n' "$rel" >> "$restore_manifest"
+  else
+    printf 'new\t%s\n' "$rel" >> "$restore_manifest"
+  fi
+done < "$affected"
+
+committed=false
+rollback_on_error() {
+  local rc=$?
+  if [[ $rc -ne 0 && "$committed" != true ]]; then
+    while IFS=$'\t' read -r action rel; do
+      [[ -n "$rel" ]] || continue
+      target="$root/$rel"
+      case "$action" in
+        existing)
+          mkdir -p "$(dirname "$target")"
+          cp -a "$backup/$rel" "$target"
+          ;;
+        new) rm -f "$target" ;;
+      esac
+    done < "$restore_manifest"
+  fi
+  cleanup_files
+  exit "$rc"
+}
+trap rollback_on_error EXIT
 
 if [[ -f "$manifest" ]]; then
   while IFS= read -r rel; do
@@ -136,9 +174,10 @@ fi
 manifest_next="${manifest}.next.$$"
 install -o root -g root -m 600 "$new_manifest" "$manifest_next"
 mv -f "$manifest_next" "$manifest"
+committed=true
 
-if [[ -z "$(find "$backup" -mindepth 1 -print -quit)" ]]; then
-  rmdir "$backup"
+if [[ -z "$(find "$backup" -mindepth 1 ! -name restore.manifest -print -quit)" ]]; then
+  rm -rf "$backup"
 fi
 
 log "instance configuration applied from local source"
