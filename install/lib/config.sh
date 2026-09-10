@@ -42,9 +42,12 @@ ensure_module_config() {
   [[ -f "$defaults" ]] || return 0
   mkdir -p "$root/config"
   if [[ ! -e "$target" ]]; then
-    cp "$defaults" "$target"
+    cat > "$target" <<EOF
+# Server Edge instance overrides for $module.
+# Keep only values that differ from release defaults in $module/config/defaults.env.
+EOF
     chown root:root "$target"
-    chmod 644 "$target"
+    chmod 600 "$target"
   fi
   [[ ! -L "$target" ]] || die "module config must not be a symlink: $target"
   [[ "$(stat -c '%U' "$target")" == root ]] || die "module config must be owned by root: $target"
