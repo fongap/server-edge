@@ -72,26 +72,50 @@ Server Edge 不以 Oracle、AWS、Ubuntu、Debian 或某一种硬件作为架构
 
 业务模块不得通过读取其他模块的 `.env`、状态目录或内部文件布局形成隐式耦合。
 
-## 多主机配置
+## 部署模型
 
-公开仓库只保存代码、Release 默认值、Schema 和安装逻辑。每台主机的实际实例配置与 Secret 不进入本仓库。
+同一个公开 Release 可以部署到不同主机，每台主机使用自己的配置和 Secret：
 
 ```text
 Public server-edge
-      │ code / defaults
-      ▼
-Linux Host
-      ├── config/    instance settings
-      ├── secrets/   credentials
-      └── state/     persistent data
+代码 / defaults / installer
+          │
+          ▼
+Private config source（可选）
+每台主机独立配置 / Secret
+          │
+          ▼
+Target Linux Host
+/opt/server-edge/
+├── releases/   ← public release
+├── config/     ← instance settings
+├── secrets/    ← credentials
+├── state/      ← persistent data
+└── runtime/
 ```
 
-模块实例文件只保存与 Release 默认值不同的覆盖项；未覆盖参数继续使用当前 Release 的默认值。
+公开仓库不保存任何主机的实际 Secret。模块只读取目标主机本地 `/opt/server-edge/`，不知道配置来自手工、本地文件还是私密控制面。
 
-安装器支持从主机上的临时实例目录导入配置：
+实例 `.env` 只保存与 Release 默认值不同的覆盖项；未覆盖参数继续继承当前 Release 默认值。
+
+### 5 分钟快速部署
+
+生产或长期运行安装必须锁定 Tag、Release 或 Commit SHA，不直接追随 `main` 或 `latest`。
+
+不使用私密控制面时，可以直接安装公开 Release：
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/fongap/server-edge/<REF>/install/bootstrap.sh \
+  | sudo bash -s -- \
+      --repo fongap/server-edge \
+      --ref <REF>
+```
+
+如果已经在目标主机准备好实例配置目录：
 
 ```text
-<instance-source>/
+/tmp/server-edge-instance/
 ├── config/
 │   ├── infra.env
 │   ├── proxy-hub.env
@@ -100,15 +124,47 @@ Linux Host
     └── <module>/...
 ```
 
-并通过：
+则直接导入：
 
 ```bash
---instance-source <LOCAL_DIRECTORY>
+curl -fsSL \
+  https://raw.githubusercontent.com/fongap/server-edge/<REF>/install/bootstrap.sh \
+  | sudo bash -s -- \
+      --repo fongap/server-edge \
+      --ref <REF> \
+      --instance-source /tmp/server-edge-instance
 ```
 
-在模块安装前写入 `/opt/server-edge/config/` 与 `/opt/server-edge/secrets/`。这个参数只接受目标主机上的本地目录；Server Edge 本身不访问 GitHub 私密仓库，也不持有 GitHub 凭据。
+`--instance-source` 只接受目标主机本地目录。Server Edge 本身不访问 GitHub 私密仓库，也不持有私密仓库凭据。
 
-外部私密控制面可以负责把不同主机的配置送到临时目录，再调用公开 bootstrap。这样同一 Release 可以部署到不同主机，而模块始终只读取本地实例目录。
+### 私密 GitHub Environment 部署
+
+推荐把多主机的真实配置放在私密控制面，每台主机使用独立 GitHub Environment：
+
+```text
+server-edge-oracle-main
+server-edge-oracle-backup
+server-edge-dell-home
+```
+
+私密工作流负责：
+
+```text
+GitHub Environment Variables / Secrets
+                ↓
+私密 Runner 临时目录
+                ↓ SSH
+目标主机临时 instance-source
+                ↓
+公开 server-edge bootstrap
+                ↓
+/opt/server-edge/config/
+/opt/server-edge/secrets/
+```
+
+Secret 只存在于 GitHub Environment Secret、临时 Runner、SSH 加密通道和目标主机本地，不进入公开仓库、运行契约或日志。
+
+完整的首次部署、Environment 字段、Bundle 格式、配置更新和故障处理见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
 ## Host Contract
 
@@ -129,37 +185,15 @@ Server Edge 面向满足 Host Contract 的 Linux 主机，包括云主机、VPS�
 - `docs/GOVERNANCE.md`：开发和变更必须遵守的红线；
 - `docs/HOST-CONTRACT.md`：宿主最小能力与支持等级；
 - `docs/CONFIGURATION.md`：配置、Secret、状态与运行契约的所有权；
+- `docs/DEPLOYMENT.md`：首次部署、多主机私密配置、更新与故障处理；
 - `<module>/README.md`：该能力域当前已经实现的行为；
 - `manifests/`：当前机器可读契约与版本事实。
 
-## 开发验证安装
-
-安装应锁定 Tag、Release 或 Commit SHA，不直接依赖 `main` 或 `latest`：
-
-```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/fongap/server-edge/<REF>/install/bootstrap.sh \
-  | sudo bash -s -- --repo fongap/server-edge --ref <REF>
-```
-
-带本机实例源：
-
-```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/fongap/server-edge/<REF>/install/bootstrap.sh \
-  | sudo bash -s -- \
-      --repo fongap/server-edge \
-      --ref <REF> \
-      --instance-source /tmp/server-edge-instance
-```
-
-默认根目录为 `/opt/server-edge`。
+## 当前限制
 
 仓库已经包含 Patch 与 Rollback 框架，但当前项目仍处于开发阶段；在正式声明升级路径和恢复保证之前，不把它们视为稳定生产接口。
 
-## 非目标
-
-当前阶段不追求：
+当前阶段也不追求：
 
 - Kubernetes、Service Mesh 或多运行时兼容；
 - 通用集群调度器；
