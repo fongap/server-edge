@@ -26,6 +26,10 @@ jobs:
           tmp="$(mktemp -d)"
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_platform_config '$PWD' '$tmp'; ensure_module_config '$PWD' '$tmp' proxy-hub"
           sudo jq -e '.schema_version == 1 and .services == {}' "$tmp/config/publications.json" >/dev/null
+          if sudo grep -q '^SERVER_EDGE_PROXY_EGRESS_PORT=' "$tmp/config/proxy-hub.env"; then
+            echo 'ERROR: instance override copied release defaults' >&2
+            exit 1
+          fi
           printf '%s\n' 'SERVER_EDGE_PROXY_EGRESS_PORT=17890' | sudo tee "$tmp/config/proxy-hub.env" >/dev/null
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_module_config '$PWD' '$tmp' proxy-hub"
           sudo grep -q '^SERVER_EDGE_PROXY_EGRESS_PORT=17890$' "$tmp/config/proxy-hub.env"
@@ -34,7 +38,12 @@ jobs:
         run: |
           tmp="$(mktemp -d)"
           sudo bash -c "source install/lib/common.sh; source install/lib/config.sh; ensure_platform_config '$PWD' '$tmp'; ensure_module_config '$PWD' '$tmp' infra"
-          sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=auto$' "$tmp/config/infra.env"
+          if sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=' "$tmp/config/infra.env"; then
+            echo 'ERROR: Infra instance override copied release defaults' >&2
+            exit 1
+          fi
+          defaults="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source infra/scripts/load-settings.sh; printf "%s|%s|%s\n" "$SERVER_EDGE_INFRA_OVERLAY" "$SERVER_EDGE_INFRA_TAILSCALE_HOSTNAME" "$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"')"
+          [[ "$defaults" == 'auto|auto|false' ]]
           cat <<'EOF' | sudo tee "$tmp/config/infra.env" >/dev/null
           SERVER_EDGE_INFRA_OVERLAY=off
           EOF
@@ -42,6 +51,29 @@ jobs:
           sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=off$' "$tmp/config/infra.env"
           values="$(sudo SERVER_EDGE_ROOT="$tmp" bash -c 'source infra/scripts/load-settings.sh; printf "%s|%s|%s\n" "$SERVER_EDGE_INFRA_OVERLAY" "$SERVER_EDGE_INFRA_TAILSCALE_HOSTNAME" "$SERVER_EDGE_INFRA_TAILSCALE_ACCEPT_DNS"')"
           [[ "$values" == 'off|auto|false' ]]
+
+      - name: Validate external instance source
+        run: |
+          tmp="$(mktemp -d)"
+          src1="$(mktemp -d)"
+          sudo install -d -m 700 "$src1/config" "$src1/secrets/proxy-hub/providers"
+          printf '%s\n' 'SERVER_EDGE_INFRA_OVERLAY=off' | sudo tee "$src1/config/infra.env" >/dev/null
+          printf '%s\n' '{"schema_version":1,"services":{}}' | sudo tee "$src1/config/publications.json" >/dev/null
+          printf '%s\n' 'https://secret.example.invalid/sub' | sudo tee "$src1/secrets/proxy-hub/providers/primary.url" >/dev/null
+          sudo bash install/configure.sh --root "$tmp" --source "$src1"
+          sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=off$' "$tmp/config/infra.env"
+          sudo test "$(sudo stat -c '%a' "$tmp/secrets/proxy-hub/providers/primary.url")" = 600
+          sudo grep -q '^config/infra.env$' "$tmp/runtime/config-source.manifest"
+          sudo grep -q '^secrets/proxy-hub/providers/primary.url$' "$tmp/runtime/config-source.manifest"
+
+          src2="$(mktemp -d)"
+          sudo install -d -m 700 "$src2/config" "$src2/secrets"
+          printf '%s\n' 'SERVER_EDGE_INFRA_OVERLAY=auto' | sudo tee "$src2/config/infra.env" >/dev/null
+          printf '%s\n' '{"schema_version":1,"services":{}}' | sudo tee "$src2/config/publications.json" >/dev/null
+          sudo bash install/configure.sh --root "$tmp" --source "$src2"
+          sudo grep -q '^SERVER_EDGE_INFRA_OVERLAY=auto$' "$tmp/config/infra.env"
+          sudo test ! -e "$tmp/secrets/proxy-hub/providers/primary.url"
+          sudo test -n "$(sudo find "$tmp/backups/configure" -type f -path '*/secrets/proxy-hub/providers/primary.url' -print -quit)"
 
       - name: Validate rendered Proxy Hub compose
         run: |
